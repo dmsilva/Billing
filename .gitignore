@@ -36,6 +36,20 @@ yarn-error.log*
 # vercel
 .vercel
 
+# database
+prisma/*.db
+prisma/*.db-wal
+prisma/*.db-shm
+
+# extracted data
+scripts/legacy-data.json
+
+# uploads
+/uploads/
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# temp files
+*.tmp
