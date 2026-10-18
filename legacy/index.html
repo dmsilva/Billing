@@ -88,6 +88,9 @@ body{background:linear-gradient(180deg,#f7f9fc 0%,#f2f5f9 100%);font-size:14px;c
     <button data-page="produtos">◌ &nbsp; Produtos</button>
     <button data-page="categorias">◈ &nbsp; Categorias</button>
     <button data-page="editar">⚙ &nbsp; Editar categorias</button>
+
+    <div class="nav-section">MIGRAÇÃO</div>
+    <button type="button" id="exportBrowserData">⇩ &nbsp; Exportar dados deste navegador</button>
   </div>
 </aside>
 <main class="content">
@@ -547,6 +550,18 @@ document.getElementById('addInvoice').onclick=()=>alert('Quando quiseres acresce
 renderAll(); renderReceivedInvoices();
 
 (function integrityCheck(){const july=cashCloses.find(x=>x.date==='2026-07-02'&&x.shift==='23h');if(ALL_CASH_DATA.length!==819 || !july || Number(july.money)!==251.95 || Number(july.cv)!==1192.18 || Number(july.mb)!==364.92){console.error('Falha na integridade dos dados das caixas');}})();
+</script>
+
+<script>
+// V36.1 — Exporta tudo o que esta versão guardou no navegador (localStorage), para importar
+// na nova FaturaClaro (Supabase) em "Dados e migração". Não altera nem apaga nada.
+document.getElementById('exportBrowserData').onclick=function(e){
+  e.stopPropagation();
+  const out={app:'FaturaClaro-legado',version:'V36',exportedAt:new Date().toISOString(),origin:location.href,localStorage:{}};
+  try{for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);if(/faturaclaro|despesas_app/i.test(k))out.localStorage[k]=localStorage.getItem(k);}}catch(err){console.error(err)}
+  const b=new Blob([JSON.stringify(out,null,2)],{type:'application/json'}),a=document.createElement('a');
+  a.href=URL.createObjectURL(b);a.download='faturaclaro-dados-navegador.json';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+};
 </script>
 
 <script>

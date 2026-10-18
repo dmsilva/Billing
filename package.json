@@ -1,36 +1,28 @@
 {
   "name": "faturaclaro",
-  "version": "0.1.0",
   "private": true,
+  "version": "2.0.0",
+  "type": "module",
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
-    "lint": "eslint",
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
-    "postinstall": "prisma skills sync || exit 0"
+    "seed:build": "node scripts/build-seed.mjs",
+    "test:sql": "bash scripts/test-sql.sh"
   },
   "dependencies": {
-    "better-sqlite3": "^13.0.3",
-    "date-fns": "^4.4.0",
-    "next": "16.3.8",
-    "react": "19.2.8",
-    "react-dom": "19.2.8",
-    "recharts": "^3.10.1",
+    "@supabase/supabase-js": "^2.49.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "react-router-dom": "^7.6.0",
+    "recharts": "^3.1.0",
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
-    "@tailwindcss/postcss": "^4",
-    "@types/better-sqlite3": "^9.6.0",
-    "@types/node": "^20",
-    "@types/react": "^19",
-    "@types/react-dom": "^19",
-    "eslint": "^9",
-    "eslint-config-next": "16.3.8",
-    "tailwindcss": "^4",
-    "typescript": "^5",
-    "vite": "^8.3.1",
-    "vitest": "^5.0.3"
+    "@vitejs/plugin-react": "^4.5.2",
+    "vite": "^6.3.0",
+    "vitest": "^5.0.5"
   }
 }
