@@ -48,6 +48,16 @@ describe('modo local', () => {
     const del = await sb.from('cash_checks').delete().in('id', [chk.data.id])
     expect(del.error).toBeNull()
 
+    const created = await sb.admin.createUser({ email: 'Ana@Exemplo.pt', nome: 'Ana', role: 'rececao', modo: 'password', password: 'segredo123' })
+    expect(created.error).toBeUndefined()
+    expect(created.profile).toMatchObject({ email: 'ana@exemplo.pt', nome: 'Ana', role: 'rececao' })
+    expect((await sb.admin.createUser({ email: 'ana@exemplo.pt', role: 'rececao', modo: 'password', password: 'segredo123' })).error).toMatch(/Já existe/)
+
+    await sb.auth.signOut()
+    expect((await sb.auth.signInWithPassword({ email: 'ana@exemplo.pt', password: 'errada' })).error).toBeTruthy()
+    expect((await sb.auth.signInWithPassword({ email: 'ana@exemplo.pt', password: 'segredo123' })).error).toBeNull()
+    expect((await sb.from('profiles').select('role').single()).data.role).toBe('rececao')
+    expect((await sb.admin.createUser({ email: 'z@z.pt', role: 'admin', modo: 'convite' })).error).toMatch(/administradora/)
     await sb.auth.signOut()
     await sb.auth.signInWithPassword({ email: 'rececao@local', password: 'x' })
     expect((await sb.from('bank_transactions').select('*')).data).toEqual([])

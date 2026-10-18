@@ -83,6 +83,7 @@ Abrir http://localhost:5173 e entrar com:
 
 - **admin@local** para a administradora (aplicação completa)
 - **rececao@local** para a receção (página de envio de faturas)
+- ou uma conta criada em **Utilizadores → Criar utilizador** (com a palavra-passe que definiste)
 
 A palavra-passe pode ser qualquer uma.
 
@@ -114,16 +115,16 @@ O modo local nunca entra no build de produção.
    - *Redirect URLs*: `https://faturaclaro.netlify.app/nova-password`
 5. **Authentication → Providers → Email**: recomendado desativar "Allow new users to sign up" e criar contas apenas por convite.
 
-### 2. Criar os utilizadores
+### 2. Criar a primeira administradora
 
-1. **Authentication → Users → Invite user** para cada pessoa. Cada convidado define a sua palavra-passe através da página `/nova-password`.
-2. Quem entra pela primeira vez fica com o papel **pendente**. Promover a primeira administradora no SQL Editor:
+1. **Authentication → Users → Add user** (ou *Invite user*) com o email da administradora.
+2. No SQL Editor, dar-lhe o papel de administradora:
 
    ```sql
    update public.profiles set role = 'admin' where email = 'email@da-administradora.pt';
    ```
 
-3. Os restantes papéis atribuem-se depois na página **Utilizadores**. Uma conta de receção recebe o papel `rececao`.
+3. As restantes contas criam-se na própria aplicação, em **Utilizadores → Criar utilizador**. Há duas formas: enviar um convite por email (a pessoa define a palavra-passe em `/nova-password`) ou definir logo a palavra-passe. O papel (Receção ou Administradora) fica atribuído no momento.
 
 ### 3. Publicar no Netlify
 
@@ -134,8 +135,9 @@ O modo local nunca entra no build de produção.
    | --- | --- |
    | `VITE_SUPABASE_URL` | Project URL |
    | `VITE_SUPABASE_ANON_KEY` | chave **anon / publishable** |
+   | `SUPABASE_SERVICE_ROLE_KEY` | chave **service_role** (só para a função que cria contas) |
 
-   ⚠️ Nunca usar a chave `service_role` ou outra chave secreta: estas variáveis ficam visíveis no navegador.
+   ⚠️ As variáveis que começam por `VITE_` ficam visíveis no navegador: nunca lá pôr chaves secretas. A `SUPABASE_SERVICE_ROLE_KEY` não tem esse prefixo e só é lida pela função do servidor `netlify/functions/criar-utilizador.mjs`, que confirma que quem pede é administradora antes de criar a conta. Se quiseres, marca-a como *secret* no Netlify.
 3. Fazer deploy. Entrar com a conta de administradora e abrir **Configuração** para confirmar que a validação está toda verde.
 
 ---

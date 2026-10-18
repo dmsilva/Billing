@@ -1,6 +1,9 @@
+import { useState } from 'react'
 import { useAuth } from '../auth/AuthProvider'
 import { useData } from '../data/DataProvider'
-import { supabase } from '../supabase'
+import { localMode, supabase } from '../supabase'
+import { createUser } from '../data/users'
+import { MIN_PASSWORD } from '../lib/users'
 import { Empty, Panel, Select, useToast } from '../components/ui'
 import { formatDateTime } from '../lib/dates'
 
@@ -24,7 +27,7 @@ export default function Utilizadores() {
 
   return (
     <>
-      <Panel title="Utilizadores" hint="A administradora vê e gere tudo. A receção só tem acesso à página de envio de faturas e vê apenas o que enviou. Contas novas ficam “sem acesso” até lhes atribuíres um papel.">
+      <Panel title="Utilizadores" hint="A administradora vê e gere tudo. A receção só tem acesso à página de envio de faturas e vê apenas o que enviou. Podes mudar o papel de cada pessoa a qualquer momento; “Sem acesso” bloqueia a conta.">
         <div className="tablewrap">
           <table>
             <thead><tr><th>Email</th><th>Nome</th><th>Papel</th><th>Criada</th></tr></thead>
@@ -41,14 +44,45 @@ export default function Utilizadores() {
           </table>
         </div>
       </Panel>
-      <Panel title="Adicionar uma pessoa">
-        <ol className="howto">
-          <li>No Supabase, abre <strong>Authentication → Users → Invite user</strong> e escreve o email da pessoa.</li>
-          <li>A pessoa recebe um email, abre o link e define a palavra-passe nesta aplicação.</li>
-          <li>Volta a esta página e escolhe o papel: <strong>Receção</strong> ou <strong>Administradora</strong>.</li>
-        </ol>
-        <p className="muted small">Criar contas exige a chave de serviço do Supabase, que nunca fica no navegador. Por isso o convite é feito no painel do Supabase.</p>
-      </Panel>
+      <NewUser onCreated={p => upsertLocal('profiles', p)} />
     </>
+  )
+}
+
+const EMPTY = { email: '', nome: '', role: 'rececao', modo: localMode ? 'password' : 'convite', password: '' }
+
+function NewUser({ onCreated }) {
+  const toast = useToast()
+  const [f, setF] = useState(EMPTY)
+  const [busy, setBusy] = useState(false)
+  const set = patch => setF(prev => ({ ...prev, ...patch }))
+
+  async function submit(e) {
+    e.preventDefault()
+    setBusy(true)
+    const res = await createUser(f)
+    setBusy(false)
+    if (res.error) return toast(res.error, 'bad')
+    onCreated(res.profile)
+    toast(res.convite ? `Convite enviado para ${res.profile.email}.` : `Conta ${res.profile.email} criada. Já pode entrar.`)
+    setF(EMPTY)
+  }
+
+  return (
+    <Panel title="Criar utilizador" hint="A conta fica logo com o papel escolhido.">
+      <form className="new-user" onSubmit={submit}>
+        <label>Email<input type="email" required value={f.email} onChange={e => set({ email: e.target.value })} placeholder="nome@exemplo.pt" /></label>
+        <label>Nome<input value={f.nome} onChange={e => set({ nome: e.target.value })} placeholder="Ex.: Ana Silva" /></label>
+        <label>Papel<Select value={f.role} onChange={v => set({ role: v })} options={ROLES.filter(r => r.value !== 'pendente')} /></label>
+        <fieldset className="new-user-mode">
+          <legend>Acesso</legend>
+          {!localMode && <label className="radio"><input type="radio" checked={f.modo === 'convite'} onChange={() => set({ modo: 'convite' })} /> Enviar convite por email (a pessoa define a palavra-passe)</label>}
+          <label className="radio"><input type="radio" checked={f.modo === 'password'} onChange={() => set({ modo: 'password' })} /> Definir já a palavra-passe</label>
+          {f.modo === 'password' && <input type="text" autoComplete="new-password" minLength={MIN_PASSWORD} required value={f.password} onChange={e => set({ password: e.target.value })} placeholder={`Pelo menos ${MIN_PASSWORD} caracteres`} />}
+        </fieldset>
+        <div className="actions"><button className="primary" disabled={busy}>{busy ? 'A criar…' : 'Criar utilizador'}</button></div>
+      </form>
+      {localMode && <p className="muted small">Modo local: a conta fica só neste navegador. Não são enviados emails.</p>}
+    </Panel>
   )
 }

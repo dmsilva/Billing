@@ -2,6 +2,8 @@
 // Usa exatamente os mesmos SQL do Supabase (esquema, RLS, funções e dados reais migrados),
 // guardados no IndexedDB deste navegador. Só para experimentar no próprio computador.
 
+import { friendlyCreateError, validateNewUser } from '../lib/users'
+
 export const LOCAL_DB_NAME = 'faturaclaro-local'
 export const LOCAL_USERS = {
   'admin@local': { id: '00000000-0000-4000-8000-00000000000a', role: 'admin', nome: 'Administradora (local)' },
@@ -67,6 +69,8 @@ export function createLocalClient({ dataDir = `idb://${LOCAL_DB_NAME}`, storage 
         await pg.query(`update public.profiles set role = $2 where id = $1`, [u.id, u.role])
       }
     }
+    // Bases criadas antes da criação de contas não tinham esta tabela.
+    await pg.exec(`create schema if not exists local; create table if not exists local.passwords (user_id uuid primary key references auth.users(id) on delete cascade, hash text not null)`)
     return pg
   }
 
@@ -86,11 +90,14 @@ export function createLocalClient({ dataDir = `idb://${LOCAL_DB_NAME}`, storage 
 
   // ---------- Autenticação ----------
   const listeners = new Set()
+  const sessionFor = u => ({ access_token: 'local', token_type: 'bearer', user: { id: u.id, email: u.email, aud: 'authenticated', role: 'authenticated', app_metadata: {}, user_metadata: { nome: u.nome } } })
   function currentSession() {
     try {
-      const email = storage?.getItem(SESSION_KEY)
-      const u = email && LOCAL_USERS[email]
-      return u ? { access_token: 'local', token_type: 'bearer', user: { id: u.id, email, aud: 'authenticated', role: 'authenticated', app_metadata: {}, user_metadata: { nome: u.nome } } } : null
+      const raw = storage?.getItem(SESSION_KEY)
+      if (!raw) return null
+      if (LOCAL_USERS[raw]) return sessionFor({ ...LOCAL_USERS[raw], email: raw })
+      const u = JSON.parse(raw)
+      return u?.id && u?.email ? sessionFor(u) : null
     } catch { return null }
   }
   const emit = (event, s) => listeners.forEach(cb => cb(event, s))
@@ -101,12 +108,17 @@ export function createLocalClient({ dataDir = `idb://${LOCAL_DB_NAME}`, storage 
       listeners.add(cb)
       return { data: { subscription: { unsubscribe: () => listeners.delete(cb) } } }
     },
-    async signInWithPassword({ email }) {
-      const key = String(email || '').toLowerCase()
-      if (!LOCAL_USERS[key]) return { data: { session: null, user: null }, error: { message: 'No modo local entra com admin@local ou rececao@local (qualquer palavra-passe).' } }
-      await db()
-      try { storage?.setItem(SESSION_KEY, key) } catch { /* sem armazenamento: sessão só nesta página */ }
-      const s = currentSession()
+    // Contas criadas com palavra-passe têm de a usar; admin@local, rececao@local e contas convidadas aceitam qualquer uma.
+    async signInWithPassword({ email, password }) {
+      const key = String(email || '').trim().toLowerCase()
+      const pg = await db()
+      const { rows } = await pg.query(
+        `select u.id, u.email, p.nome, pw.hash is null or pw.hash = crypt($2, pw.hash) as ok
+         from auth.users u left join public.profiles p on p.id = u.id left join local.passwords pw on pw.user_id = u.id
+         where lower(u.email) = $1`, [key, String(password || '')])
+      if (!rows.length || !rows[0].ok) return { data: { session: null, user: null }, error: { message: rows.length ? 'Invalid login credentials' : 'No modo local entra com admin@local, rececao@local ou uma conta criada na página Utilizadores.' } }
+      const s = sessionFor(rows[0])
+      try { storage?.setItem(SESSION_KEY, JSON.stringify({ id: s.user.id, email: s.user.email, nome: rows[0].nome })) } catch { /* sem armazenamento: sessão só nesta página */ }
       emit('SIGNED_IN', s)
       return { data: { session: s, user: s?.user }, error: null }
     },
@@ -266,7 +278,33 @@ export function createLocalClient({ dataDir = `idb://${LOCAL_DB_NAME}`, storage 
     return ch
   }
 
-  return { local: true, auth, from: table => new Query(table), rpc, storage: storageApi, channel, removeChannel: () => {}, ready: db }
+  // Equivalente local da função do Netlify criar-utilizador (mesmas validações).
+  const admin = {
+    async createUser(input) {
+      try {
+        const pg = await db()
+        const me = currentSession()?.user
+        const { rows: r } = await pg.query(`select role from public.profiles where id = $1`, [me?.id || null])
+        if (r[0]?.role !== 'admin') return { error: 'Só uma administradora pode criar contas.' }
+        const { value, error } = validateNewUser(input)
+        if (error) return { error }
+        const exists = await pg.query(`select 1 from auth.users where lower(email) = $1`, [value.email])
+        if (exists.rows.length) return { error: friendlyCreateError('already registered') }
+        const profile = await pg.transaction(async tx => {
+          const { rows } = await tx.query(`insert into auth.users (id, email, raw_user_meta_data) values (gen_random_uuid(), $1, $2) returning id`, [value.email, JSON.stringify({ nome: value.nome })])
+          const id = rows[0].id
+          if (value.modo === 'password') await tx.query(`insert into local.passwords (user_id, hash) values ($1, crypt($2, gen_salt('bf')))`, [id, value.password])
+          const res = await tx.query(`with p as (update public.profiles set role = $2, nome = $3 where id = $1 returning *) select row_to_json(p) as j from p`, [id, value.role, value.nome])
+          return res.rows[0].j
+        })
+        return { profile, convite: value.modo === 'convite' }
+      } catch (e) {
+        return { error: e.message }
+      }
+    },
+  }
+
+  return { local: true, auth, admin, from: table => new Query(table), rpc, storage: storageApi, channel, removeChannel: () => {}, ready: db }
 }
 
 // Apaga a base local deste navegador; na próxima abertura é recriada com os dados originais.
