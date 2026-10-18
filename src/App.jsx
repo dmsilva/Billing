@@ -34,6 +34,7 @@ function MissingConfig() {
         <div className="brand dark"><strong>Fatura<span>Claro</span></strong></div>
         <h2>Falta configurar o Supabase</h2>
         <p className="muted">Define as variáveis <code>VITE_SUPABASE_URL</code> e <code>VITE_SUPABASE_ANON_KEY</code> (no ficheiro <code>.env</code> ou nas variáveis de ambiente do Netlify) e volta a publicar.</p>
+        <p className="muted">Para experimentar no computador sem Supabase, corre <code>npm run local</code>.</p>
       </div>
     </div>
   )

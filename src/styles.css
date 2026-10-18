@@ -242,3 +242,6 @@ td small{display:block;font-size:11px}td small.warn{color:#a66a05}
   .tablewrap{max-width:calc(100vw - 32px)}
 }
 @media(max-width:560px){.rececao .grid{grid-template-columns:1fr}.rececao .preview{grid-template-columns:repeat(2,1fr)}.modal .form-grid{grid-template-columns:1fr}.mine-row{grid-template-columns:70px 1fr auto}.mine-row>:nth-child(3),.mine-row>:nth-child(4){display:none}}
+
+/* Modo local */
+.local-banner { display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; }

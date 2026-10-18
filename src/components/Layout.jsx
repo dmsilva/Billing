@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../auth/AuthProvider'
 import { useData } from '../data/DataProvider'
+import { localMode } from '../supabase'
 
 export const PAGES = [
   { section: 'GESTÃO' },
@@ -29,9 +30,24 @@ export function pageFor(pathname) {
   return p || PAGES[1]
 }
 
+function LocalBanner() {
+  async function reset() {
+    if (!window.confirm('Apagar todas as alterações feitas em modo local e voltar aos dados originais?')) return
+    const { resetLocalDatabase } = await import('../local/localClient')
+    await resetLocalDatabase()
+    window.location.assign('/')
+  }
+  return (
+    <div className="notice local-banner">
+      <span><strong>Modo local.</strong> Os dados reais migrados estão numa base de dados dentro deste navegador. As alterações ficam só aqui e não chegam ao Supabase. Usa apenas um separador de cada vez.</span>
+      <button className="secondary" onClick={reset}>Repor dados originais</button>
+    </div>
+  )
+}
+
 export default function Layout() {
   const { profile, signOut } = useAuth()
-  const { invoices, online, error } = useData()
+  const { invoices, online, error, loading } = useData()
   const [open, setOpen] = useState(false)
   const loc = useLocation()
   const nav = useNavigate()
@@ -54,10 +70,12 @@ export default function Layout() {
               </NavLink>
             ),
           )}
-          <a href="/rececao" target="_blank" rel="noreferrer"><span className="nav-icon">📷</span>Página da receção ↗</a>
+          <a href="/rececao" {...(localMode ? {} : { target: '_blank', rel: 'noreferrer' })}><span className="nav-icon">📷</span>Página da receção ↗</a>
         </nav>
         <div className="sidebar-foot">
-          <div className={`sync ${online ? 'on' : 'off'}`}>{online ? '● Sincronizado' : '○ A ligar…'}</div>
+          {localMode
+            ? <div className="sync off">● Modo local (só neste navegador)</div>
+            : <div className={`sync ${online ? 'on' : 'off'}`}>{online ? '● Sincronizado' : '○ A ligar…'}</div>}
           <div className="who">{profile?.nome || profile?.email}</div>
           <button className="link-btn light" onClick={signOut}>Terminar sessão</button>
         </div>
@@ -70,8 +88,9 @@ export default function Layout() {
           </div>
           <button className="primary" onClick={() => nav('/faturas/nova')}>+ Adicionar fatura</button>
         </div>
+        {localMode && <LocalBanner />}
         {error && <div className="notice bad">Erro ao comunicar com o Supabase: {error}</div>}
-        <Outlet />
+        {loading ? <div className="notice">A carregar dados…</div> : <Outlet />}
       </main>
     </div>
   )

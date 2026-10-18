@@ -68,6 +68,34 @@ O HTML antigo guardava no `localStorage` do navegador as alterações de categor
 
 ---
 
+## Experimentar no computador (sem Supabase)
+
+Precisa apenas do [Node.js](https://nodejs.org) 20 ou mais recente e do git.
+
+```bash
+git clone -b claude/faturaclaro-react-supabase https://github.com/dmsilva/Billing.git faturaclaro
+cd faturaclaro
+npm install
+npm run local
+```
+
+Abrir http://localhost:5173 e entrar com:
+
+- **admin@local** para a administradora (aplicação completa)
+- **rececao@local** para a receção (página de envio de faturas)
+
+A palavra-passe pode ser qualquer uma.
+
+No modo local, a aplicação corre uma base PostgreSQL dentro do próprio navegador. Usa exatamente o mesmo esquema, as mesmas regras de segurança e os mesmos dados reais migrados que o Supabase. O primeiro arranque demora alguns segundos.
+
+- As alterações (faturas, fotografias, conferências, importações) ficam guardadas nesse navegador e não chegam ao Supabase.
+- O botão **Repor dados originais** volta ao ponto de partida.
+- Convém usar um separador de cada vez.
+
+O modo local nunca entra no build de produção.
+
+---
+
 ## Publicar: passo a passo
 
 ### 1. Criar o projeto Supabase
@@ -119,6 +147,8 @@ cp .env.example .env      # preencher com o URL e a chave anon do Supabase
 npm install
 npm run dev               # http://localhost:5173
 ```
+
+Sem `.env`, `npm run local` arranca o modo local descrito acima.
 
 ### Testes
 
