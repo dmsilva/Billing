@@ -1,0 +1,29 @@
+{
+  "bank": {
+    "count": 143,
+    "total": 124736.02
+  },
+  "bankCompanyTransfers": {
+    "count": 2,
+    "total": 5150
+  },
+  "cashInvoices": {
+    "count": 13,
+    "total": 1354.49
+  },
+  "items": {
+    "count": 59,
+    "total": 1610.24,
+    "withoutValue": 1
+  },
+  "cashCloses": {
+    "count": 819,
+    "dinheiro": 32525.47,
+    "cv": 440347.392,
+    "mb": 225332.324,
+    "cityMb": 2553.8,
+    "total": 700758.986,
+    "firstDate": "2026-01-01",
+    "lastDate": "2026-09-30"
+  }
+}
