@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useAuth } from '../auth/AuthProvider'
 import { supabase } from '../supabase'
 import { ACCEPTED, uploadInvoiceFile, validateFile } from '../data/files'
+import { readInvoiceFiles } from '../data/invoiceReading'
+import { applyReading, fileType } from '../lib/invoiceReading'
 import { parseMoney } from '../lib/money'
 import { formatDate, formatDateTime, todayIso } from '../lib/dates'
 
@@ -10,12 +12,17 @@ export default function Rececao() {
   const { user, profile, signOut, isAdmin } = useAuth()
   const [properties, setProperties] = useState([])
   const [mine, setMine] = useState([])
-  const blank = () => ({ fornecedor: '', data: todayIso(), imovel_id: '', pagamento: 'Numerário', enviado_por: profile?.nome || '', documento: '', valor: '', observacoes: '' })
+  const blank = () => ({ fornecedor: '', data: todayIso(), imovel_id: '', pagamento: 'Numerário', enviado_por: profile?.nome || '', documento: '', valor: '', iva: '', observacoes: '' })
   const [form, setForm] = useState(blank)
+  const formRef = useRef()
+  formRef.current = form
   const [files, setFiles] = useState([])
   const [status, setStatus] = useState(null)
   const [busy, setBusy] = useState(false)
+  const [reading, setReading] = useState(null)
   const fileRef = useRef()
+  const cameraRef = useRef()
+  const readId = useRef(0)
 
   async function loadMine() {
     const { data } = await supabase.from('invoices').select('id, fornecedor, data, pagamento, estado, created_at, invoice_files(id)').eq('submitted_by', user.id).order('created_at', { ascending: false }).limit(10)
@@ -30,14 +37,39 @@ export default function Rececao() {
     loadMine()
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const previews = useMemo(() => files.map(f => ({ f, url: f.type.startsWith('image/') && !/heic|heif/.test(f.type) ? URL.createObjectURL(f) : null })), [files])
+  const previews = useMemo(() => files.map(f => ({ f, url: fileType(f).startsWith('image/') && !/heic|heif/.test(fileType(f)) ? URL.createObjectURL(f) : null })), [files])
   useEffect(() => () => previews.forEach(p => p.url && URL.revokeObjectURL(p.url)), [previews])
 
   function pick(list) {
     const arr = [...list]
     const errors = arr.map(validateFile).filter(Boolean)
     setStatus(errors.length ? { tone: 'bad', text: errors.join(' ') } : null)
-    setFiles(prev => [...prev, ...arr.filter(f => !validateFile(f))])
+    const ok = arr.filter(f => !validateFile(f))
+    if (!ok.length) return
+    const all = [...files, ...ok]
+    setFiles(all)
+    readAll(all)
+  }
+
+  // Lê a fatura e preenche os campos ainda vazios; a pessoa confirma antes de enviar.
+  async function readAll(list) {
+    const id = ++readId.current
+    setReading({ tone: 'busy', text: 'A ler a fatura…' })
+    const res = await readInvoiceFiles(list)
+    if (id !== readId.current) return
+    if (res.desligada) return setReading(null)
+    if (res.error) return setReading({ tone: 'bad', text: res.error })
+    const { form: next, filled } = applyReading(formRef.current, res.leitura, todayIso())
+    setForm(next)
+    setReading(filled.length
+      ? { tone: 'ok', text: 'Campos preenchidos a partir da fatura. Confirma se estão certos antes de enviar.' }
+      : { tone: 'bad', text: 'Não foi possível ler os dados desta fatura. Preenche os campos à mão.' })
+  }
+
+  function removeFile(i) {
+    readId.current++
+    setReading(null)
+    setFiles(files.filter((_, j) => j !== i))
   }
 
   async function send(e) {
@@ -46,12 +78,14 @@ export default function Rececao() {
     if (!files.length) return setStatus({ tone: 'bad', text: 'Adiciona pelo menos uma foto ou PDF da fatura.' })
     const valor = form.valor.trim() ? parseMoney(form.valor) : null
     if (form.valor.trim() && valor === null) return setStatus({ tone: 'bad', text: 'O valor não é válido. Usa, por exemplo, 12,30' })
+    const iva = form.iva.trim() ? parseMoney(form.iva) : null
+    if (form.iva.trim() && iva === null) return setStatus({ tone: 'bad', text: 'O IVA não é válido. Usa, por exemplo, 2,30' })
     setBusy(true)
     try {
       const { data: inv, error } = await supabase.from('invoices').insert({
         fornecedor: form.fornecedor.trim() || null, data: form.data || null, imovel_id: form.imovel_id ? Number(form.imovel_id) : null,
         pagamento: form.pagamento, enviado_por: form.enviado_por.trim() || null, documento: form.documento.trim() || null,
-        valor, observacoes: form.observacoes.trim() || null, origem: 'rececao', estado: 'Por validar', submitted_by: user.id,
+        valor, iva, observacoes: form.observacoes.trim() || null, origem: 'rececao', estado: 'Por validar', submitted_by: user.id,
       }).select('id').single()
       if (error) throw error
       let sent = 0
@@ -63,7 +97,8 @@ export default function Rececao() {
       else setStatus({ tone: 'ok', text: `✓ Fatura enviada com ${sent} ficheiro(s). Já está disponível na aplicação principal para validação.` })
       setForm(f => ({ ...blank(), imovel_id: f.imovel_id, pagamento: f.pagamento, enviado_por: f.enviado_por }))
       setFiles([])
-      if (fileRef.current) fileRef.current.value = ''
+      setReading(null)
+      readId.current++
       loadMine()
     } catch (err) {
       setStatus({ tone: 'bad', text: `Não foi possível enviar: ${err.message}` })
@@ -83,18 +118,25 @@ export default function Rececao() {
         <form className="panel" onSubmit={send}>
           <h2>Enviar fatura</h2>
           <div className="small">Fotografa a fatura ou recibo, escolhe como foi pago e envia. O original fica arquivado em segurança para validação.</div>
-          <label className="drop big">
-            <input ref={fileRef} type="file" accept={ACCEPTED} multiple capture="environment" onChange={e => pick(e.target.files)} />
-            <strong>📷 Tirar foto ou escolher ficheiro</strong>
-            <span className="small">Podes juntar várias fotos da mesma fatura (até 20 MB cada).</span>
-          </label>
+          <div className="pick">
+            <label className="drop big">
+              <input ref={cameraRef} type="file" accept="image/*" capture="environment" onChange={e => { pick(e.target.files); e.target.value = '' }} />
+              <strong>📷 Tirar foto</strong>
+            </label>
+            <label className="drop big">
+              <input ref={fileRef} type="file" accept={ACCEPTED} multiple onChange={e => { pick(e.target.files); e.target.value = '' }} />
+              <strong>📁 Escolher foto ou PDF</strong>
+            </label>
+          </div>
+          <span className="small">Podes juntar várias fotos da mesma fatura (até 20 MB cada).</span>
+          {reading && <div className={`reading ${reading.tone}`}>{reading.text}</div>}
           {files.length > 0 && (
             <div className="preview">
               {previews.map(({ f, url }, i) => (
                 <div key={i} className="thumb">
-                  {url ? <img src={url} alt={f.name} /> : <div className="file-icon">{f.type === 'application/pdf' ? 'PDF' : '📄'}</div>}
+                  {url ? <img src={url} alt={f.name} /> : <div className="file-icon">{fileType(f) === 'application/pdf' ? 'PDF' : '📄'}</div>}
                   <span>{f.name}</span>
-                  <button type="button" onClick={() => setFiles(files.filter((_, j) => j !== i))} aria-label="Remover">✕</button>
+                  <button type="button" onClick={() => removeFile(i)} aria-label="Remover">✕</button>
                 </div>
               ))}
             </div>
@@ -114,7 +156,10 @@ export default function Rececao() {
             <label>Quem está a enviar?<input value={form.enviado_por} onChange={e => set({ enviado_por: e.target.value })} placeholder="Nome do funcionário" /></label>
             <label>Valor total <span className="opt">(opcional)</span><input inputMode="decimal" value={form.valor} onChange={e => set({ valor: e.target.value })} placeholder="0,00" /></label>
           </div>
-          <label>Documento / nº fatura <span className="opt">(opcional)</span><input value={form.documento} onChange={e => set({ documento: e.target.value })} placeholder="Ex.: FT 2026/1234" /></label>
+          <div className="grid">
+            <label>Documento / nº fatura <span className="opt">(opcional)</span><input value={form.documento} onChange={e => set({ documento: e.target.value })} placeholder="Ex.: FT 2026/1234" /></label>
+            <label>IVA <span className="opt">(opcional)</span><input inputMode="decimal" value={form.iva} onChange={e => set({ iva: e.target.value })} placeholder="0,00" /></label>
+          </div>
           <label>Observações <span className="opt">(opcional)</span><textarea value={form.observacoes} onChange={e => set({ observacoes: e.target.value })} placeholder="Alguma informação importante…" /></label>
           <button className="btn" disabled={busy}>{busy ? 'A enviar…' : 'Enviar fatura'}</button>
           {status && <div className={status.tone === 'ok' ? 'ok' : 'err'}>{status.text}</div>}

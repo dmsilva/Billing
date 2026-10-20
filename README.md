@@ -20,7 +20,7 @@ Gestão financeira do alojamento: despesas CGD e numerário, faturas com documen
 | **Categorias / Editar categorias** | Totais por categoria e reclassificação de movimentos (com histórico). |
 | **Caixa diária** | Fechos por turno (7h, 15h, 23h), importação do Excel da caixa com pré-visualização, histórico e anulação, edição manual e TPA. |
 | **Conferência** | Conferência dos envelopes na ordem CV → MB → Numerário → próximo envelope. `Enter` ou **OK** aceita; escrever o valor real regista a diferença; cada conferência pode ser corrigida e fica com histórico. |
-| **Receção** (`/rececao`) | Página simples para telemóvel: tirar foto ou escolher ficheiro, fornecedor, valor, enviar. |
+| **Receção** (`/rececao`) | Página simples para telemóvel: tirar foto ou escolher foto/PDF, confirmar os campos (lidos automaticamente da fatura quando a leitura está ligada) e enviar. |
 | **Utilizadores** | Atribuir papéis (administrador, receção, pendente). |
 | **Configuração** | Validação dos dados migrados, importação dos dados guardados no navegador antigo, imóveis. |
 
@@ -136,8 +136,11 @@ O modo local nunca entra no build de produção.
    | `VITE_SUPABASE_URL` | Project URL |
    | `VITE_SUPABASE_ANON_KEY` | chave **anon / publishable** |
    | `SUPABASE_SERVICE_ROLE_KEY` | chave **service_role** (só para a função que cria contas) |
+| `ANTHROPIC_API_KEY` | opcional: chave da [Anthropic](https://console.anthropic.com) para ler automaticamente as faturas na Receção |
 
    ⚠️ As variáveis que começam por `VITE_` ficam visíveis no navegador: nunca lá pôr chaves secretas. A `SUPABASE_SERVICE_ROLE_KEY` não tem esse prefixo e só é lida pela função do servidor `netlify/functions/criar-utilizador.mjs`, que confirma que quem pede é administradora antes de criar a conta. Se quiseres, marca-a como *secret* no Netlify.
+
+   A `ANTHROPIC_API_KEY` também é secreta e só é lida pela função `netlify/functions/ler-fatura.mjs`. Quando a Receção junta uma foto ou PDF, a função lê fornecedor, NIF, data, nº do documento, total e IVA, e preenche os campos que ainda estão vazios; a pessoa confirma antes de enviar. O original guardado não é alterado. Cada leitura custa poucos cêntimos. Sem esta chave, a página funciona como antes e os campos escrevem-se à mão. No modo local a leitura não está disponível.
 3. Fazer deploy. Entrar com a conta de administradora e abrir **Configuração** para confirmar que a validação está toda verde.
 
 ---

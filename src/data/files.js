@@ -1,4 +1,5 @@
 import { BUCKET, supabase } from '../supabase'
+import { fileType } from '../lib/invoiceReading'
 
 export const MAX_FILE_BYTES = 20 * 1024 * 1024
 export const ACCEPTED = 'image/jpeg,image/png,image/webp,image/heic,image/heif,application/pdf'
@@ -10,7 +11,8 @@ export function safeName(name) {
 }
 
 export function validateFile(f) {
-  const type = f.type || (f.name.toLowerCase().endsWith('.heic') ? 'image/heic' : '')
+  // Alguns telemóveis enviam o ficheiro sem tipo: deduz-se pela extensão.
+  const type = fileType(f)
   if (!ALLOWED.has(type)) return `${f.name}: formato não aceite (usa foto JPG/PNG/HEIC ou PDF).`
   if (f.size > MAX_FILE_BYTES) return `${f.name}: ficheiro maior do que 20 MB.`
   return null
@@ -19,7 +21,7 @@ export function validateFile(f) {
 // Guarda o ficheiro original (sem compressão) no bucket privado e regista-o na fatura.
 export async function uploadInvoiceFile({ file, invoiceId, userId }) {
   const path = `${userId}/${invoiceId}/${Date.now()}-${Math.random().toString(36).slice(2, 7)}-${safeName(file.name)}`
-  const contentType = file.type || 'image/heic'
+  const contentType = fileType(file) || 'application/octet-stream'
   const { error: upErr } = await supabase.storage.from(BUCKET).upload(path, file, { contentType, upsert: false })
   if (upErr) throw upErr
   const { data, error } = await supabase
