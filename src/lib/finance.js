@@ -158,6 +158,17 @@ export function cashEntries(closes) {
   }
 }
 
+// Totais da caixa por mês (mais recente primeiro).
+export function cashByMonth(closes) {
+  const groups = new Map()
+  for (const c of closes) {
+    const m = monthOf(c.data)
+    if (!groups.has(m)) groups.set(m, [])
+    groups.get(m).push(c)
+  }
+  return [...groups].sort(([a], [b]) => b.localeCompare(a)).map(([mes, list]) => ({ mes, ...cashEntries(list) }))
+}
+
 // ---------- Produtos / pequeno-almoço ----------
 
 export const BREAKFAST_TYPES = new Set(['Pequeno-almoço', 'Laticínios', 'Fruta', 'Bebidas'])

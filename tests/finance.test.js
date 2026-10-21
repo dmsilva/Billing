@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { legacy, legacyAsDb } from './helpers.js'
-import { accountingRows, applyFilters, bankToRow, breakfastAnalysis, byCategory, byMonth, byProperty, bySupplier, cashEntries, invoiceCountsAsExpense, invoiceToRow, totals, attentionCounts } from '../src/lib/finance.js'
+import { accountingRows, applyFilters, bankToRow, breakfastAnalysis, byCategory, byMonth, byProperty, bySupplier, cashByMonth, cashEntries, invoiceCountsAsExpense, invoiceToRow, totals, attentionCounts } from '../src/lib/finance.js'
 
 const db = legacyAsDb()
 const bankRows = db.bank.map(t => bankToRow(t, db.catsById, db.propsById))
@@ -82,6 +82,12 @@ describe('entradas de caixa', () => {
   it('julho de 2026', () => {
     const july = cashEntries(db.closes.filter(c => c.data.startsWith('2026-07')))
     expect(july.dias).toBe(31)
+  })
+  it('totais por mês somam o total geral', () => {
+    const months = cashByMonth(db.closes)
+    expect(months.map(m => m.mes)).toEqual(['2026-09', '2026-08', '2026-07', '2026-06', '2026-05', '2026-04', '2026-03', '2026-02', '2026-01'])
+    expect(months.find(m => m.mes === '2026-07')).toMatchObject(cashEntries(db.closes.filter(c => c.data.startsWith('2026-07'))))
+    expect(Math.round(months.reduce((a, m) => a + m.total * 1000, 0))).toBe(700758986)
   })
 })
 
