@@ -5,12 +5,12 @@ import { useFilters } from '../data/FiltersProvider'
 import { supabase } from '../supabase'
 import { useMonthOptions } from '../components/FilterBar'
 import { ConfirmButton, Empty, Kpi, Modal, Panel, Select, useToast } from '../components/ui'
-import { cashCloseTotal, cashEntries } from '../lib/finance'
+import { cashByMonth, cashCloseTotal, cashEntries } from '../lib/finance'
 import { compareCloses, SHIFT_INFO, SHIFTS } from '../lib/reconciliation'
 import { diffCashImport, parseCashSheets, parseCsvText } from '../lib/cashImport'
 import { readWorkbook } from '../lib/xlsxLoader'
 import { euroExact, parseMoney, sumBy } from '../lib/money'
-import { formatDate, formatDateTime, monthOf, todayIso } from '../lib/dates'
+import { formatDate, formatDateTime, monthLabel, monthOf, todayIso } from '../lib/dates'
 import { decimalPt, downloadText, toCsv } from '../lib/csv'
 
 const FIELD_LABEL = { dinheiro: 'Dinheiro', cv: 'CV', mb: 'MB', city_mb: 'City MB' }
@@ -25,6 +25,8 @@ export default function Caixa() {
   const [editing, setEditing] = useState(null)
   const rows = useMemo(() => cash_closes.filter(c => !filters.month || monthOf(c.data) === filters.month).sort(compareCloses), [cash_closes, filters.month])
   const e = cashEntries(rows)
+  const perMonth = useMemo(() => cashByMonth(cash_closes), [cash_closes])
+  const periodo = filters.month ? 'do mês' : 'do período'
   const checksByClose = useMemo(() => {
     const m = new Map()
     for (const c of cash_checks) m.set(c.cash_close_id, (m.get(c.cash_close_id) || 0) + 1)
@@ -63,6 +65,7 @@ export default function Caixa() {
         <Kpi color="green" icon="€" label="Dinheiro" value={euroExact(e.dinheiro)} note="Total dos fechos" />
         <Kpi color="purple" icon="MB" label="MB" value={euroExact(e.mb)} note={`City MB: ${euroExact(e.cityMb)}`} />
         <Kpi color="orange" icon="CV" label="CV" value={euroExact(e.cv)} note="Cartão virtual" />
+        <Kpi color="blue" icon="Σ" label={`Total ${periodo}`} value={euroExact(e.total)} note="Dinheiro + CV + MB + City MB" />
       </div>
       <div className="cash-layout">
         <Panel title="Fechos por dia" hint="7h · 15h · 23h">
@@ -84,6 +87,13 @@ export default function Caixa() {
                   </tr>
                 )) : <Empty colSpan={11}>Ainda não existem fechos neste período.</Empty>}
               </tbody>
+              {rows.length > 0 && (
+                <tfoot><tr className="cash-total-row">
+                  <td colSpan={3}><strong>Total {periodo}</strong></td>
+                  <td className="money">{euroExact(e.dinheiro)}</td><td className="money">{euroExact(e.cv)}</td><td className="money">{euroExact(e.mb)}</td><td className="money">{euroExact(e.cityMb)}</td>
+                  <td className="money"><strong>{euroExact(e.total)}</strong></td><td colSpan={3} />
+                </tr></tfoot>
+              )}
             </table>
           </div>
         </Panel>
@@ -95,6 +105,18 @@ export default function Caixa() {
           <button className="secondary full-btn" onClick={() => setEditing({ data: todayIso(), turno: '7h', dinheiro: 0, cv: 0, mb: 0, city_mb: 0 })}>Registar fecho manualmente</button>
         </Panel>
       </div>
+      <Panel title="Totais por mês" hint="Carrega num mês para ver os fechos desse mês.">
+        {perMonth.length ? (
+          <div className="tablewrap"><table className="mini-table">
+            <thead><tr><th>Mês</th><th className="money">Dias</th><th className="money">Dinheiro</th><th className="money">CV</th><th className="money">MB</th><th className="money">City MB</th><th className="money">Total</th></tr></thead>
+            <tbody>{perMonth.map(m => (
+              <tr key={m.mes} className={`clickable${m.mes === filters.month ? ' row-selected' : ''}`} onClick={() => set({ month: m.mes })}>
+                <td>{monthLabel(m.mes)}</td><td className="money">{m.dias}</td><td className="money">{euroExact(m.dinheiro)}</td><td className="money">{euroExact(m.cv)}</td><td className="money">{euroExact(m.mb)}</td><td className="money">{euroExact(m.cityMb)}</td><td className="money"><strong>{euroExact(m.total)}</strong></td>
+              </tr>
+            ))}</tbody>
+          </table></div>
+        ) : <div className="emptybox">Ainda não existem fechos.</div>}
+      </Panel>
       <div className="notice"><strong>Formato aceite:</strong> o Excel da Caixa Diária (uma folha por dia, colunas Hóspede, Quarto, Dinheiro, CV, MB, city mb, Funcionário e linhas “Fecho 7h”, “Fecho 15h”, “Fecho 23h”) ou uma tabela simples com Data, Turno, Dinheiro, CV, MB, City MB. Antes de gravar vês o que é novo e o que muda.</div>
 
       <Panel title="Histórico de importações" hint="Cada importação guarda os valores anteriores e pode ser anulada.">
