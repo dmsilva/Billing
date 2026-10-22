@@ -18,15 +18,20 @@ const TABLES = {
   cash_imports: { select: '*', order: 'importado_em', ascending: false },
   bank_imports: { select: '*', order: 'importado_em', ascending: false },
   profiles: { select: '*', order: 'email' },
+  // Só existe depois de executar supabase/05_faturas_por_pagar.sql; sem ela a aplicação continua a funcionar.
+  invoice_payments: { select: '*', order: 'data', optional: true },
 }
 
 const PAGE = 1000
 
-export async function fetchAll(table, { select = '*', order = 'id', ascending = true } = {}) {
+export async function fetchAll(table, { select = '*', order = 'id', ascending = true, optional = false } = {}) {
   const rows = []
   for (let from = 0; ; from += PAGE) {
     const { data, error } = await supabase.from(table).select(select).order(order, { ascending }).order('id', { ascending: true }).range(from, from + PAGE - 1)
-    if (error) throw error
+    if (error) {
+      if (optional) return null
+      throw error
+    }
     rows.push(...data)
     if (data.length < PAGE) return rows
   }
@@ -37,12 +42,13 @@ export function DataProvider({ children }) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [online, setOnline] = useState(true)
+  const [missing, setMissing] = useState([])
   const timers = useRef({})
 
   const reload = useCallback(async table => {
     try {
       const rows = await fetchAll(table, TABLES[table])
-      setState(s => ({ ...s, [table]: rows }))
+      setState(s => ({ ...s, [table]: rows || [] }))
     } catch (e) {
       setError(`${table}: ${e.message}`)
     }
@@ -53,7 +59,8 @@ export function DataProvider({ children }) {
     setError(null)
     try {
       const entries = await Promise.all(Object.entries(TABLES).map(async ([t, cfg]) => [t, await fetchAll(t, cfg)]))
-      setState(Object.fromEntries(entries))
+      setState(Object.fromEntries(entries.map(([t, rows]) => [t, rows || []])))
+      setMissing(entries.filter(([, rows]) => rows === null).map(([t]) => t))
     } catch (e) {
       setError(e.message)
     } finally {
@@ -111,7 +118,7 @@ export function DataProvider({ children }) {
     }
   }, [state])
 
-  const value = { ...state, ...derived, loading, error, online, reload, reloadAll, upsertLocal, removeLocal }
+  const value = { ...state, ...derived, paymentsReady: !missing.includes('invoice_payments'), loading, error, online, reload, reloadAll, upsertLocal, removeLocal }
   return <DataContext.Provider value={value}>{children}</DataContext.Provider>
 }
 

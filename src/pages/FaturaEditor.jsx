@@ -11,6 +11,7 @@ import { daysBetween, formatDate, formatDateTime, todayIso } from '../lib/dates'
 import { invoiceCountsAsExpense } from '../lib/finance'
 
 const PRODUCT_TYPES = ['Pequeno-almoço', 'Laticínios', 'Fruta', 'Fruta/legumes', 'Bebidas', 'Mercearia', 'Limpeza', 'Consumíveis', 'Alimentação', 'Outros']
+const PAY_LABEL = { 'Numerário': '💶 Numerário', CGD: '🏦 CGD', 'Por pagar': '🕓 Por pagar' }
 const toInput = v => (v === null || v === undefined ? '' : String(v).replace('.', ','))
 
 function blank(propertyId) {
@@ -51,6 +52,10 @@ export default function FaturaEditor() {
       bank_transaction_id: form.pagamento === 'CGD' ? form.bank_transaction_id : null,
       ...extra,
     }
+    // Marcar à mão como paga (ou voltar a por pagar) regista a data da liquidação.
+    const wasUnpaid = isNew ? false : invoice.pagamento === 'Por pagar'
+    if (wasUnpaid && form.pagamento !== 'Por pagar') p.liquidada_em = todayIso()
+    if (!wasUnpaid && form.pagamento === 'Por pagar' && !isNew) p.liquidada_em = null
     if (isNew) p.origem = 'manual'
     return p
   }
@@ -102,7 +107,7 @@ export default function FaturaEditor() {
             <label>Categoria<CategorySelect className="" value={form.categoria_id} onChange={v => set({ categoria_id: v })} /></label>
             <label>Meio de pagamento
               <div className="pay-toggle">
-                {['Numerário', 'CGD'].map(p => <button type="button" key={p} className={form.pagamento === p ? 'on' : ''} onClick={() => set({ pagamento: p })}>{p === 'Numerário' ? '💶 Numerário' : '🏦 CGD'}</button>)}
+                {['Numerário', 'CGD', 'Por pagar'].map(p => <button type="button" key={p} disabled={!!form.payment_id} className={form.pagamento === p ? 'on' : ''} onClick={() => set({ pagamento: p })}>{PAY_LABEL[p]}</button>)}
               </div>
             </label>
             <label>Valor total (€)<input inputMode="decimal" value={form.valor} onChange={e => set({ valor: e.target.value })} placeholder="0,00" /></label>
@@ -112,8 +117,12 @@ export default function FaturaEditor() {
             {form.estado === 'Rejeitada' && <label className="span2">Motivo da rejeição<input value={form.motivo_rejeicao || ''} onChange={e => set({ motivo_rejeicao: e.target.value })} /></label>}
             <label className="span2">Observações<textarea value={form.observacoes || ''} onChange={e => set({ observacoes: e.target.value })} /></label>
           </div>
-          <div className={`notice ${form.pagamento === 'CGD' ? '' : 'ok'}`}>
-            {form.pagamento === 'CGD'
+          <div className={`notice ${form.pagamento === 'CGD' ? '' : form.pagamento === 'Por pagar' ? 'warn' : 'ok'}`}>
+            {form.payment_id
+              ? <>Liquidada em {formatDate(form.liquidada_em)} num pagamento agrupado. Para mudar o meio de pagamento, anula esse pagamento em <Link to="/por-liquidar">Por liquidar</Link>.</>
+              : form.pagamento === 'Por pagar'
+              ? <>Por pagar: ainda não entra nos totais. Liquida-a em <Link to="/por-liquidar">Por liquidar</Link> (sozinha ou junto com outras do mesmo fornecedor).</>
+              : form.pagamento === 'CGD'
               ? 'Paga por CGD: o valor já está no extrato bancário, por isso esta fatura não soma outra vez. Liga-a ao movimento correspondente.'
               : invoiceCountsAsExpense({ ...form, valor: form.valor === '' ? null : valor })
                 ? `Paga em numerário: ${euro(valor)} entram nas despesas contabilísticas (não saem da CGD).`

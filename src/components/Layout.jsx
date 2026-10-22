@@ -3,6 +3,7 @@ import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../auth/AuthProvider'
 import { useData } from '../data/DataProvider'
 import { localMode } from '../supabase'
+import { isUnpaid } from '../lib/finance'
 
 export const PAGES = [
   { section: 'GESTÃO' },
@@ -16,6 +17,7 @@ export const PAGES = [
   { path: '/faturas', label: 'Faturas', icon: '▧', title: 'Faturas', sub: 'Documentos, ficheiros originais e linhas de produtos' },
   { path: '/numerario', label: 'Numerário', icon: '◉', title: 'Numerário', sub: 'Faturas e recibos pagos em dinheiro' },
   { path: '/recebidas', label: 'Recebidas', icon: '✉', title: 'Faturas recebidas', sub: 'Enviadas pela receção · por validar', badge: 'recebidas' },
+  { path: '/por-liquidar', label: 'Por liquidar', icon: '🕓', title: 'Por liquidar', sub: 'Faturas por pagar e pagamentos agrupados', badge: 'por-liquidar' },
   { section: 'ANÁLISE' },
   { path: '/produtos', label: 'Produtos', icon: '◌', title: 'Produtos', sub: 'Consumo e gasto por artigo' },
   { path: '/categorias', label: 'Categorias', icon: '◈', title: 'Categorias', sub: 'Despesas por categoria · CGD e numerário' },
@@ -53,6 +55,7 @@ export default function Layout() {
   const nav = useNavigate()
   const page = pageFor(loc.pathname)
   const pendingReceived = invoices.filter(i => i.origem === 'rececao' && i.estado === 'Por validar').length
+  const unpaid = invoices.filter(isUnpaid).length
 
   return (
     <div className="app">
@@ -67,6 +70,7 @@ export default function Layout() {
               <NavLink key={p.path} to={p.path} end={p.path === '/'} className={({ isActive }) => (isActive ? 'active' : '')}>
                 <span className="nav-icon">{p.icon}</span>{p.label}
                 {p.badge === 'recebidas' && pendingReceived > 0 && <b className="nav-badge">{pendingReceived}</b>}
+                {p.badge === 'por-liquidar' && unpaid > 0 && <b className="nav-badge">{unpaid}</b>}
               </NavLink>
             ),
           )}

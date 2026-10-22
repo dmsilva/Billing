@@ -24,7 +24,7 @@ export default function FilterBar({ onExport, showPayment = true, showCategory =
     <div className="filters">
       <Select value={filters.month} onChange={v => set({ month: v })} options={months} placeholder="Todos os meses" aria-label="Mês" />
       <Select value={filters.property} onChange={v => set({ property: v })} options={propertyNames} placeholder="Todos os imóveis" aria-label="Imóvel" />
-      {showPayment && <Select value={filters.payment} onChange={v => set({ payment: v })} options={['CGD', 'Numerário']} placeholder="Todos os pagamentos" aria-label="Pagamento" />}
+      {showPayment && <Select value={filters.payment} onChange={v => set({ payment: v })} options={['CGD', 'Numerário', 'Por pagar']} placeholder="Todos os pagamentos" aria-label="Pagamento" />}
       {showCategory && <Select value={filters.category} onChange={v => set({ category: v })} options={categoryNames} placeholder="Todas as categorias" aria-label="Categoria" />}
       {showSearch && <input className="search" value={filters.search} onChange={e => set({ search: e.target.value })} placeholder="Pesquisar fornecedor, movimento, documento ou categoria…" />}
       {extra}

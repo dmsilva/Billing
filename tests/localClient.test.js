@@ -65,3 +65,23 @@ describe('modo local', () => {
     expect(props.data.length).toBeGreaterThan(0)
   }, 60000)
 })
+
+describe('modo local: faturas por pagar', () => {
+  it('a receção envia por pagar e a administradora liquida várias de uma vez', async () => {
+    const sb = createLocalClient({ dataDir: 'memory://', storage: memoryStorage() })
+    await sb.auth.signInWithPassword({ email: 'rececao@local', password: 'x' })
+    const sent = await sb.from('invoices').insert({ data: '2026-10-05', fornecedor: 'Grão de Trigo', pagamento: 'Por pagar', valor: 12.4, origem: 'rececao', estado: 'Por validar' }).select('id').single()
+    expect(sent.error).toBeNull()
+    await sb.auth.signOut()
+
+    await sb.auth.signInWithPassword({ email: 'admin@local', password: 'x' })
+    const other = await sb.from('invoices').insert({ data: '2026-10-19', fornecedor: 'Grão de Trigo', pagamento: 'Por pagar', valor: 7.5, origem: 'manual', estado: 'Validada' }).select('id').single()
+    const paid = await sb.rpc('liquidar_faturas', { p_ids: [sent.data.id, other.data.id], p_data: '2026-10-31', p_meio: 'Numerário', p_referencia: 'Outubro', p_observacoes: null, p_bank_transaction_id: null })
+    expect(paid.error).toBeNull()
+    expect(paid.data).toMatchObject({ faturas: 2, valor: 19.9 })
+    const rows = await sb.from('invoices').select('pagamento, payment_id, liquidada_em').in('id', [sent.data.id, other.data.id])
+    expect(rows.data.every(r => r.pagamento === 'Numerário' && r.payment_id === paid.data.pagamento && r.liquidada_em === '2026-10-31')).toBe(true)
+    const undo = await sb.rpc('anular_pagamento', { p_payment_id: paid.data.pagamento })
+    expect(undo.data).toEqual({ faturas: 2 })
+  }, 60000)
+})

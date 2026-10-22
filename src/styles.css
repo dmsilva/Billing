@@ -130,7 +130,7 @@ a.attention-item{color:inherit;text-decoration:none}
 .form-grid input,.form-grid select,.form-grid textarea,.auth-card input,.modal input,.modal select,.modal textarea,.editselect,.filters input,.filters select{height:40px;border:1px solid #dbe2ec;border-radius:10px;padding:0 11px;background:#fbfcfe;color:var(--text);font-weight:500}
 .form-grid textarea,.modal textarea{height:80px;padding:10px 11px;resize:vertical}
 input:focus,select:focus,textarea:focus{outline:none;border-color:#8ea8f5;box-shadow:0 0 0 3px #edf2ff}
-.pay-toggle{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.pay-toggle{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
 .pay-toggle button{height:40px;border:1px solid #dbe2ec;border-radius:10px;background:#fff;font-weight:700}
 .pay-toggle button.on{border-color:var(--accent);background:var(--accent2);color:#2449cf}
 .inline-create{display:inline-flex;gap:6px}
@@ -204,7 +204,7 @@ td small{display:block;font-size:11px}td small.warn{color:#a66a05}
 .rececao input,.rececao select,.rececao textarea{width:100%;padding:13px 14px;border:1px solid #d9dde7;border-radius:11px;font:inherit;background:#fff;margin-top:7px;font-weight:400}
 .rececao textarea{min-height:80px;resize:vertical}
 .rececao .grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
-.rececao .pay{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.rececao .pay{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
 .rececao .pay label{margin:0}.rececao .pay input{display:none}
 .rececao .pay span{display:block;padding:14px;border:1px solid #d9dde7;border-radius:11px;text-align:center;cursor:pointer;font-weight:600}
 .rececao .pay input:checked+span{border-color:#d63384;background:#fff2f8;color:#b4236d;font-weight:800}
@@ -260,3 +260,7 @@ td small{display:block;font-size:11px}td small.warn{color:#a66a05}
 .rececao .reading{margin-top:10px;padding:11px 13px;border-radius:10px;font-size:14px}.rececao .reading.busy{background:#eef3ff;color:#2f4fb5}.rececao .reading.ok{background:#ecfdf3;color:#067647}.rececao .reading.bad{background:#fff8df;color:#8a6500}
 .cash-page .cash-kpis{grid-template-columns:repeat(5,1fr)}@media(max-width:1250px){.cash-page .cash-kpis{grid-template-columns:repeat(3,1fr)}}@media(max-width:700px){.cash-page .cash-kpis{grid-template-columns:1fr}}
 .cash-total-row td{position:sticky;bottom:0;background:#f3f6fb;border-top:2px solid #dbe3ef;font-weight:700}
+.notice.warn{background:#fff8e6;border-color:#f1dfae;color:#7a5a12}
+.pay-toggle.two{grid-template-columns:1fr 1fr}.pay-toggle button:disabled{opacity:.55;cursor:not-allowed}
+.pay-bar{position:sticky;bottom:12px;z-index:5;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;background:#fff;border:1px solid #d9e2f1;border-radius:14px;padding:12px 16px;margin:0 0 18px;box-shadow:0 10px 30px rgba(26,44,78,.12)}
+.candidate.on{border-color:var(--accent);background:var(--accent2)}

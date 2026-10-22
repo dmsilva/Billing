@@ -8,12 +8,14 @@
 //  - Faturas pagas por CGD são documentos de suporte de um movimento do extrato: nunca são
 //    somadas outra vez (evita dupla contagem).
 //  - Faturas rejeitadas ou ainda sem valor não entram nos totais.
+//  - Faturas "Por pagar" ficam fora dos totais até serem liquidadas (passam então a CGD ou Numerário).
 //  - "Entradas de caixa" = Dinheiro + CV + MB + City MB dos fechos da caixa diária.
 import { sum, sumBy, sameAmount } from './money.js'
 import { monthOf } from './dates.js'
 
 export const PAYMENT_CGD = 'CGD'
 export const PAYMENT_CASH = 'Numerário'
+export const PAYMENT_UNPAID = 'Por pagar'
 export const UNCLASSIFIED = ['Por classificar', 'Outros / por classificar']
 
 export const SALARY_RE = /\bORDEN(?:ADO|ADOS|AR|OS|A)?\b|\bORDE\b|\bSAL[ÁA]RIO(?:S)?\b/i
@@ -229,6 +231,29 @@ export function byProductType(lines) {
   return [...map.entries()].map(([nome, vs]) => ({ nome, total: sum(vs) })).sort((a, b) => b.total - a.total)
 }
 
+// ---------- Faturas por liquidar ----------
+
+export const isUnpaid = inv => inv.pagamento === PAYMENT_UNPAID && inv.estado !== 'Rejeitada'
+
+// Faturas por pagar agrupadas por fornecedor (o pagamento costuma ser feito ao fornecedor de uma vez).
+export function unpaidBySupplier(invoices) {
+  const map = new Map()
+  for (const inv of invoices.filter(isUnpaid)) {
+    const nome = (inv.fornecedor || '').trim() || 'Sem fornecedor'
+    const key = nome.toLowerCase()
+    if (!map.has(key)) map.set(key, { nome, faturas: [] })
+    map.get(key).faturas.push(inv)
+  }
+  return [...map.values()]
+    .map(g => ({
+      ...g,
+      faturas: g.faturas.sort((a, b) => String(a.data).localeCompare(String(b.data))),
+      total: sumBy(g.faturas, i => i.valor),
+      semValor: g.faturas.filter(i => i.valor == null).length,
+    }))
+    .sort((a, b) => b.total - a.total || a.nome.localeCompare(b.nome, 'pt'))
+}
+
 // ---------- Alertas ----------
 
 export function attentionCounts({ rows, invoices, closes, checks, month }) {
@@ -238,6 +263,7 @@ export function attentionCounts({ rows, invoices, closes, checks, month }) {
   for (const c of checks) checksPerClose.set(c.cash_close_id, (checksPerClose.get(c.cash_close_id) || 0) + 1)
   return {
     porValidar: invoices.filter(i => i.estado === 'Por validar' && inMonth(i.data)).length,
+    porLiquidar: invoices.filter(isUnpaid).length,
     caixasPorConferir: closes.filter(c => inMonth(c.data) && (checksPerClose.get(c.id) || 0) < 3).length,
     porClassificar: rows.filter(r => r.kind === 'bank' && UNCLASSIFIED.includes(r.categoria) && inMonth(r.data)).length,
     diferencas: checks.filter(c => c.valor_real != null && !sameAmount(c.valor_real, c.valor_esperado) && inMonth(closeById.get(c.cash_close_id)?.data)).length,
