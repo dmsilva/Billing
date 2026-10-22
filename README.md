@@ -16,6 +16,7 @@ Gestão financeira do alojamento: despesas CGD e numerário, faturas com documen
 | **Faturas** | Todas as faturas, com documento original (foto/PDF), linhas de produtos e ligação a um movimento CGD. |
 | **Numerário** | Faturas pagas em dinheiro, que são as únicas faturas que somam à despesa. |
 | **Recebidas** | Faturas enviadas pela receção à espera de validação. |
+| **Por liquidar** | Faturas registadas como “Por pagar”, agrupadas por fornecedor. Escolhem-se várias e regista-se um só pagamento (CGD ou numerário), que pode ser anulado. |
 | **Produtos** | Análise por produto e tipo de produto (linhas das faturas). |
 | **Categorias / Editar categorias** | Totais por categoria e reclassificação de movimentos (com histórico). |
 | **Caixa diária** | Fechos por turno (7h, 15h, 23h), importação do Excel da caixa com pré-visualização, histórico e anulação, edição manual e TPA. |
@@ -30,6 +31,7 @@ Gestão financeira do alojamento: despesas CGD e numerário, faturas com documen
 - **Despesa em numerário** = faturas com método *Numerário*, com valor e não rejeitadas.
 - **Faturas CGD nunca somam**: são o comprovativo de um movimento bancário que já está contado. Podem ser ligadas a esse movimento.
 - Os valores são somados em milésimos de euro para evitar erros de arredondamento.
+- **Faturas por pagar** não entram nos totais até serem liquidadas; nessa altura passam a CGD (não somam) ou Numerário (somam).
 
 Estas regras estão em `src/lib/finance.js` e cobertas por testes em `tests/`.
 
@@ -106,7 +108,8 @@ O modo local nunca entra no build de produção.
    1. `supabase/01_schema.sql` (tabelas, funções, triggers)
    2. `supabase/02_policies.sql` (RLS, bucket privado `faturas`, políticas de Storage)
    3. `supabase/03_seed_legacy.sql` (dados reais migrados; termina com uma verificação automática)
-   4. Opcional: `supabase/04_verificacao.sql` (só leitura, mostra os totais)
+   4. `supabase/05_faturas_por_pagar.sql` (faturas por pagar e pagamentos agrupados)
+   5. Opcional: `supabase/04_verificacao.sql` (só leitura, mostra os totais)
 
    Os scripts podem ser executados mais do que uma vez sem duplicar dados.
 3. **Database → Publications → supabase_realtime**: confirmar que as tabelas da aplicação estão incluídas (o `01_schema.sql` já as adiciona). Isto mantém vários dispositivos sincronizados em tempo real.

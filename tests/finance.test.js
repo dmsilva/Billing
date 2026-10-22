@@ -115,3 +115,26 @@ describe('alertas', () => {
     expect(a.diferencas).toBe(1)
   })
 })
+
+describe('faturas por pagar', () => {
+  const base = { estado: 'Validada', categoria_id: null, imovel_id: null }
+  const unpaid = [
+    { ...base, id: 901, data: '2026-10-19', fornecedor: 'Grão de Trigo', pagamento: 'Por pagar', valor: 7.5 },
+    { ...base, id: 902, data: '2026-10-05', fornecedor: 'grão de trigo ', pagamento: 'Por pagar', valor: 12.4 },
+    { ...base, id: 903, data: '2026-10-07', fornecedor: 'Makro', pagamento: 'Por pagar', valor: null },
+    { ...base, id: 904, data: '2026-10-07', fornecedor: 'Makro', pagamento: 'Por pagar', valor: 50, estado: 'Rejeitada' },
+  ]
+  it('não entram nos totais enquanto não forem liquidadas', async () => {
+    const extra = unpaid.map(i => invoiceToRow(i, db.catsById, db.propsById))
+    const withUnpaid = accountingRows(bankRows, [...invoiceRows, ...extra])
+    expect(totals(withUnpaid)).toEqual(totals(rows))
+    expect(unpaid.some(invoiceCountsAsExpense)).toBe(false)
+  })
+  it('agrupa por fornecedor e ignora as rejeitadas', async () => {
+    const { unpaidBySupplier } = await import('../src/lib/finance.js')
+    const groups = unpaidBySupplier(unpaid)
+    expect(groups.map(g => [g.nome, g.faturas.length, g.total, g.semValor])).toEqual([['Grão de Trigo', 2, 19.9, 0], ['Makro', 1, 0, 1]])
+    expect(groups[0].faturas.map(i => i.id)).toEqual([902, 901])
+    expect(attentionCounts({ rows: [], invoices: unpaid, closes: [], checks: [], month: '' }).porLiquidar).toBe(3)
+  })
+})

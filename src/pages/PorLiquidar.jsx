@@ -1,0 +1,175 @@
+import { useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
+import { useData } from '../data/DataProvider'
+import { supabase } from '../supabase'
+import { ConfirmButton, Empty, Kpi, Modal, Panel, useToast } from '../components/ui'
+import { unpaidBySupplier } from '../lib/finance'
+import { euro, sameAmount, sumBy } from '../lib/money'
+import { daysBetween, formatDate, todayIso } from '../lib/dates'
+
+// Faturas registadas como "Por pagar" (normalmente pela receção) e os pagamentos que as liquidaram.
+export default function PorLiquidar() {
+  const { invoices, invoice_payments, bank_transactions, propertiesById, paymentsReady, reload } = useData()
+  const toast = useToast()
+  const [q, setQ] = useState('')
+  const [selected, setSelected] = useState(() => new Set())
+  const [paying, setPaying] = useState(false)
+
+  const groups = useMemo(() => {
+    const term = q.trim().toLowerCase()
+    return unpaidBySupplier(invoices).filter(g => !term || g.nome.toLowerCase().includes(term) || g.faturas.some(i => String(i.documento || '').toLowerCase().includes(term)))
+  }, [invoices, q])
+  const all = groups.flatMap(g => g.faturas)
+  const chosen = all.filter(i => selected.has(i.id))
+  const chosenTotal = sumBy(chosen, i => i.valor)
+
+  const toggle = ids => setSelected(prev => {
+    const next = new Set(prev)
+    const allOn = ids.every(id => next.has(id))
+    for (const id of ids) allOn ? next.delete(id) : next.add(id)
+    return next
+  })
+
+  const invoicesByPayment = useMemo(() => {
+    const m = new Map()
+    for (const i of invoices) if (i.payment_id) m.set(i.payment_id, [...(m.get(i.payment_id) || []), i])
+    return m
+  }, [invoices])
+
+  async function undo(p) {
+    const { data, error } = await supabase.rpc('anular_pagamento', { p_payment_id: p.id })
+    if (error) return toast(`Não foi possível anular: ${error.message}`, 'bad')
+    toast(`Pagamento anulado: ${data.faturas} fatura(s) voltaram a ficar por pagar.`)
+    reload('invoices')
+    reload('invoice_payments')
+  }
+
+  return (
+    <>
+      <Panel title="Faturas por liquidar" hint="Faturas registadas como “Por pagar”. Escolhe as que pagaste (por exemplo, todas as do mês de um fornecedor) e regista um único pagamento. Enquanto estão por pagar não entram nos totais; depois de liquidadas contam como CGD ou Numerário, conforme o pagamento.">
+        {!paymentsReady && <div className="notice bad">Para usar esta página é preciso executar uma vez o ficheiro <strong>supabase/05_faturas_por_pagar.sql</strong> no SQL Editor do Supabase.</div>}
+        <div className="filters flat">
+          <input className="search" value={q} onChange={e => setQ(e.target.value)} placeholder="Pesquisar fornecedor ou nº do documento…" />
+          {selected.size > 0 && <button className="secondary" onClick={() => setSelected(new Set())}>Limpar seleção</button>}
+        </div>
+      </Panel>
+      <div className="grid3">
+        <Kpi color="orange" icon="🕓" label="Por liquidar" value={euro(sumBy(all, i => i.valor))} note={`${all.length} fatura(s)`} />
+        <Kpi color="blue" icon="▧" label="Fornecedores" value={groups.length} note="Com faturas por pagar" />
+        <Kpi color="purple" icon="✓" label="Selecionadas" value={euro(chosenTotal)} note={`${chosen.length} fatura(s)`} />
+      </div>
+
+      {groups.length ? groups.map(g => {
+        const ids = g.faturas.map(i => i.id)
+        const allOn = ids.every(id => selected.has(id))
+        return (
+          <Panel key={g.nome} title={g.nome} hint={`${g.faturas.length} fatura(s) · ${euro(g.total)}${g.semValor ? ` · ${g.semValor} sem valor` : ''}`}
+            actions={<button className="secondary" onClick={() => toggle(ids)}>{allOn ? 'Desmarcar todas' : 'Selecionar todas'}</button>}>
+            <div className="tablewrap">
+              <table className="mini-table">
+                <thead><tr><th /><th>Data</th><th>Documento</th><th>Descrição</th><th>Imóvel</th><th>Estado</th><th className="money">Valor</th></tr></thead>
+                <tbody>{g.faturas.map(i => (
+                  <tr key={i.id} className={selected.has(i.id) ? 'row-selected' : ''}>
+                    <td><input type="checkbox" checked={selected.has(i.id)} onChange={() => toggle([i.id])} aria-label="Selecionar fatura" /></td>
+                    <td>{formatDate(i.data)}</td>
+                    <td><Link to={`/faturas/${i.id}`}>{i.documento || 'Abrir'}</Link></td>
+                    <td className="wrap">{i.descricao}</td>
+                    <td>{propertiesById.get(i.imovel_id) || '—'}</td>
+                    <td>{i.estado}</td>
+                    <td className="money">{i.valor == null ? <span className="muted">sem valor</span> : euro(i.valor)}</td>
+                  </tr>
+                ))}</tbody>
+              </table>
+            </div>
+          </Panel>
+        )
+      }) : <Panel><div className="emptybox">{q ? 'Nenhuma fatura por pagar para esta pesquisa.' : 'Não há faturas por liquidar.'}</div></Panel>}
+
+      {chosen.length > 0 && (
+        <div className="pay-bar">
+          <span><strong>{chosen.length}</strong> fatura(s) selecionada(s) · <strong>{euro(chosenTotal)}</strong></span>
+          <button className="primary" disabled={!paymentsReady} onClick={() => setPaying(true)}>Liquidar selecionadas</button>
+        </div>
+      )}
+
+      <Panel title="Pagamentos registados" hint="Cada pagamento junta uma ou mais faturas. Anular volta a pô-las por pagar.">
+        {invoice_payments.length ? (
+          <div className="tablewrap">
+            <table className="mini-table">
+              <thead><tr><th>Data</th><th>Fornecedor</th><th>Meio</th><th>Referência</th><th className="money">Faturas</th><th className="money">Valor</th><th /></tr></thead>
+              <tbody>{[...invoice_payments].sort((a, b) => String(b.data).localeCompare(String(a.data)) || b.id - a.id).map(p => (
+                <tr key={p.id}>
+                  <td>{formatDate(p.data)}</td><td>{p.fornecedor || 'Vários'}</td><td>{p.meio}</td><td>{p.referencia || '—'}</td>
+                  <td className="money">{invoicesByPayment.get(p.id)?.length || 0}</td><td className="money"><strong>{euro(p.valor)}</strong></td>
+                  <td><ConfirmButton className="link-btn" confirmText="Anular pagamento" onConfirm={() => undo(p)}>Anular</ConfirmButton></td>
+                </tr>
+              ))}</tbody>
+            </table>
+          </div>
+        ) : <Empty>Ainda não há pagamentos registados.</Empty>}
+      </Panel>
+
+      {paying && <PayModal invoices={chosen} total={chosenTotal} transactions={bank_transactions} payments={invoice_payments} allInvoices={invoices}
+        onClose={() => setPaying(false)} onDone={() => { setSelected(new Set()); reload('invoices'); reload('invoice_payments') }} />}
+    </>
+  )
+}
+
+function PayModal({ invoices, total, transactions, payments, allInvoices, onClose, onDone }) {
+  const toast = useToast()
+  const [f, setF] = useState({ data: todayIso(), meio: 'CGD', referencia: '', observacoes: '', bank_transaction_id: null })
+  const [busy, setBusy] = useState(false)
+  const semValor = invoices.filter(i => i.valor == null).length
+  const used = useMemo(() => new Set([...payments.map(p => p.bank_transaction_id), ...allInvoices.map(i => i.bank_transaction_id)].filter(Boolean)), [payments, allInvoices])
+  // Movimentos do extrato com o mesmo valor do pagamento, mais próximos da data primeiro.
+  const candidates = useMemo(() => transactions
+    .filter(t => !used.has(t.id) && sameAmount(Math.abs(Number(t.valor)), total))
+    .sort((a, b) => Math.abs(daysBetween(f.data, a.data_mov)) - Math.abs(daysBetween(f.data, b.data_mov)))
+    .slice(0, 6), [transactions, used, total, f.data])
+
+  async function save() {
+    setBusy(true)
+    const { data, error } = await supabase.rpc('liquidar_faturas', {
+      p_ids: invoices.map(i => i.id), p_data: f.data, p_meio: f.meio, p_referencia: f.referencia, p_observacoes: f.observacoes,
+      p_bank_transaction_id: f.meio === 'CGD' ? f.bank_transaction_id : null,
+    })
+    setBusy(false)
+    if (error) return toast(`Não foi possível liquidar: ${error.message}`, 'bad')
+    toast(`Pagamento registado: ${data.faturas} fatura(s), ${euro(data.valor)}.`)
+    onDone()
+    onClose()
+  }
+
+  return (
+    <Modal title={`Liquidar ${invoices.length} fatura(s) · ${euro(total)}`} onClose={onClose}>
+      {semValor > 0 && <div className="notice bad">{semValor} fatura(s) não têm valor. Abre-as e preenche o valor antes de liquidar.</div>}
+      <div className="form-grid">
+        <label>Data do pagamento<input type="date" value={f.data} onChange={e => setF({ ...f, data: e.target.value })} /></label>
+        <label>Meio de pagamento
+          <div className="pay-toggle two">
+            {['CGD', 'Numerário'].map(m => <button type="button" key={m} className={f.meio === m ? 'on' : ''} onClick={() => setF({ ...f, meio: m })}>{m === 'CGD' ? '🏦 CGD' : '💶 Numerário'}</button>)}
+          </div>
+        </label>
+        <label className="span2">Referência <span className="opt">(opcional)</span><input value={f.referencia} onChange={e => setF({ ...f, referencia: e.target.value })} placeholder="Ex.: Transferência outubro" /></label>
+        <label className="span2">Observações <span className="opt">(opcional)</span><input value={f.observacoes} onChange={e => setF({ ...f, observacoes: e.target.value })} /></label>
+      </div>
+      {f.meio === 'CGD' && (
+        <div className="bank-link">
+          <div className="subhead">Movimento do extrato CGD <span className="opt">(opcional)</span></div>
+          {candidates.length ? candidates.map(t => (
+            <button type="button" key={t.id} className={`candidate ${f.bank_transaction_id === t.id ? 'on' : ''}`} onClick={() => setF({ ...f, bank_transaction_id: f.bank_transaction_id === t.id ? null : t.id })}>
+              <span>{formatDate(t.data_mov)}</span><span>{t.descricao}</span><strong>{euro(t.valor)}</strong>
+            </button>
+          )) : <div className="muted small">Ainda não há no extrato um movimento de {euro(total)}. Podes liquidar na mesma; quando importares o extrato, o movimento aparece em CGD / Extrato.</div>}
+        </div>
+      )}
+      <p className="muted small">{f.meio === 'CGD'
+        ? 'Pagas por CGD: o valor conta pelo movimento do extrato, por isso as faturas não somam outra vez.'
+        : `Pagas em numerário: ${euro(total)} entram nas despesas contabilísticas.`}</p>
+      <div className="actions end">
+        <button className="secondary" onClick={onClose}>Cancelar</button>
+        <button className="primary" disabled={busy || semValor > 0 || !f.data} onClick={save}>{busy ? 'A registar…' : 'Registar pagamento'}</button>
+      </div>
+    </Modal>
+  )
+}

@@ -48,7 +48,7 @@ export function Badge({ children, tone = '' }) {
 }
 
 export function PaymentBadge({ value }) {
-  return <Badge tone={value === 'CGD' ? 'bank' : 'cash'}>{value}</Badge>
+  return <Badge tone={value === 'CGD' ? 'bank' : value === 'Por pagar' ? 'pending' : 'cash'}>{value}</Badge>
 }
 
 export function StateBadge({ value }) {

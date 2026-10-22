@@ -47,7 +47,9 @@ export function selectList(table, columns = '*', alias = 't') {
   }).join(', ')
 }
 
-const toParam = v => (v !== null && typeof v === 'object' && !(v instanceof Uint8Array) ? JSON.stringify(v) : v)
+// Listas de números/texto vão como array do PostgreSQL (ex.: bigint[]); objetos e listas de objetos como JSON.
+const isPlainList = v => Array.isArray(v) && v.length > 0 && v.every(x => x === null || typeof x !== 'object')
+const toParam = v => (v !== null && typeof v === 'object' && !(v instanceof Uint8Array) && !isPlainList(v) ? JSON.stringify(v) : v)
 const fail = (e, code) => ({ data: null, error: { message: e?.message || String(e), code: e?.code || code || 'local' }, count: null })
 
 export function createLocalClient({ dataDir = `idb://${LOCAL_DB_NAME}`, storage = globalThis.localStorage } = {}) {
@@ -58,7 +60,7 @@ export function createLocalClient({ dataDir = `idb://${LOCAL_DB_NAME}`, storage 
     // A condição é resolvida no build: o PGlite e os SQL nunca entram no build de produção.
     const mod = import.meta.env.MODE === 'production' ? null : await import('./pglite.js')
     if (!mod) throw new Error('Modo local indisponível no build de produção')
-    const { PGlite, pgcrypto, SETUP_SQL } = mod
+    const { PGlite, pgcrypto, SETUP_SQL, PAYMENTS_UPDATE_SQL } = mod
     const pg = await PGlite.create({ dataDir, extensions: { pgcrypto } })
     const ready = await pg.query(`select to_regclass('public.cash_closes') is not null as ok`)
     if (!ready.rows[0].ok) {
@@ -69,6 +71,8 @@ export function createLocalClient({ dataDir = `idb://${LOCAL_DB_NAME}`, storage 
         await pg.query(`update public.profiles set role = $2 where id = $1`, [u.id, u.role])
       }
     }
+    const payments = await pg.query(`select to_regclass('public.invoice_payments') is not null as ok`)
+    if (!payments.rows[0].ok) for (const sql of PAYMENTS_UPDATE_SQL) await pg.exec(sql)
     // Bases criadas antes da criação de contas não tinham esta tabela.
     await pg.exec(`create schema if not exists local; create table if not exists local.passwords (user_id uuid primary key references auth.users(id) on delete cascade, hash text not null)`)
     return pg
