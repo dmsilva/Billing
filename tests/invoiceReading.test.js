@@ -22,9 +22,9 @@ describe('tipo de ficheiro', () => {
 describe('normalizeReading', () => {
   it('só aceita valores com formato válido', () => {
     expect(normalizeReading({ fornecedor: '  Pingo   Doce ', nif: 'PT 500 829 993', data: '2026-10-18', documento: 'FS 1/23', valor_total: 12.345, iva: 1.2 }))
-      .toEqual({ fornecedor: 'Pingo Doce', nif: '500829993', data: '2026-10-18', documento: 'FS 1/23', valor_total: 12.35, iva: 1.2 })
+      .toEqual({ fornecedor: 'Pingo Doce', nif: '500829993', data: '2026-10-18', documento: 'FS 1/23', valor_total: 12.35, iva: 1.2, pagamento: null, cliente: null, descricao: null })
     expect(normalizeReading({ data: '2026-02-30', nif: '123', valor_total: -4, iva: 'abc' }))
-      .toEqual({ fornecedor: null, nif: null, data: null, documento: null, valor_total: null, iva: null })
+      .toEqual({ fornecedor: null, nif: null, data: null, documento: null, valor_total: null, iva: null, pagamento: null, cliente: null, descricao: null })
     expect(normalizeReading(null).fornecedor).toBeNull()
   })
 })
@@ -80,5 +80,33 @@ describe('função ler-fatura', () => {
   it('responde 422 quando o modelo não devolve dados', async () => {
     const r = await readInvoice({ supabase: supa('admin'), anthropic: claude({ stop_reason: 'refusal', content: [] }), token: 'ok', body: { files: [img] } })
     expect(status(r)).toBe(422)
+  })
+})
+
+describe('leitura alargada', () => {
+  const props = [{ id: 1, nome: "Chalet D'Ávila" }, { id: 2, nome: 'Chalet do Lago' }]
+  it('reconhece o imóvel pelo cliente da fatura', async () => {
+    const { matchProperty } = await import('../src/lib/invoiceReading.js')
+    expect(matchProperty('Chalet do Lago, Lda — Rua X, Sintra', props)).toBe(2)
+    expect(matchProperty("CHALET D'AVILA AL", props)).toBe(1)
+    expect(matchProperty('Consumidor final', props)).toBeNull()
+    expect(matchProperty('Chalet', props)).toBeNull()
+  })
+  it('preenche pagamento, imóvel e descrição, sem mexer no que a pessoa escolheu', () => {
+    const form = { ...blank, imovel_id: 1, pagamento: 'Numerário', descricao: '' }
+    const leitura = { fornecedor: 'Continente', pagamento: 'cartao', cliente: 'Chalet do Lago', descricao: 'Pão e leite' }
+    const r = applyReading(form, leitura, '2026-10-20', { properties: props })
+    expect(r.form).toMatchObject({ pagamento: 'CGD', imovel_id: 2, descricao: 'Pão e leite' })
+    const kept = applyReading(form, leitura, '2026-10-20', { properties: props, touched: { pagamento: true, imovel_id: true } })
+    expect(kept.form).toMatchObject({ pagamento: 'Numerário', imovel_id: 1 })
+  })
+})
+
+describe('erros da Anthropic', () => {
+  it('traduz os erros mais comuns', async () => {
+    const { friendlyClaudeError } = await import('../netlify/functions/ler-fatura.mjs')
+    expect(friendlyClaudeError({ status: 400, message: 'Your credit balance is too low to access the Anthropic API.' })).toMatch(/saldo/)
+    expect(friendlyClaudeError({ status: 401, message: 'invalid x-api-key' })).toMatch(/não é válida/)
+    expect(friendlyClaudeError({ status: 529, message: 'Overloaded' })).toMatch(/indisponível/)
   })
 })
