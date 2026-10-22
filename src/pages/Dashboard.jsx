@@ -6,7 +6,7 @@ import { useFinance } from '../data/useFinance'
 import { useFilters } from '../data/FiltersProvider'
 import FilterBar, { useMonthOptions } from '../components/FilterBar'
 import { Kpi, Panel, RankBars, Select, StateBadge } from '../components/ui'
-import { attentionCounts, breakfastAnalysis, byCategory, byMonth, byProperty, bySupplier, cashEntries, cashCloseTotal, lineMonth, totals } from '../lib/finance'
+import { attentionCounts, bankCredits, breakfastAnalysis, byCategory, byMonth, byProperty, bySupplier, cashEntries, cashCloseTotal, lineMonth, totals } from '../lib/finance'
 import { euro, sum } from '../lib/money'
 import { formatDate, monthLabel, monthOf, monthShort, monthsOfYear } from '../lib/dates'
 
@@ -19,11 +19,12 @@ export default function Dashboard() {
   const { filters, set } = useFilters()
   const nav = useNavigate()
   const monthOptions = useMonthOptions()
-  const { rows, closes, all, invoices, invoice_lines, cash_closes, cash_checks, bankRows } = fin
+  const { rows, closes, all, invoices, invoice_lines, cash_closes, cash_checks, bankRows, bank_credits } = fin
 
   const year = (filters.month || monthOptions.at(-1)?.value || String(new Date().getFullYear())).slice(0, 4)
   const t = totals(rows)
   const entries = cashEntries(closes)
+  const credits = bankCredits(bank_credits, filters.month)
 
   const monthly = useMemo(() => {
     const months = monthsOfYear(year)
@@ -34,8 +35,9 @@ export default function Dashboard() {
       ...m,
       label: monthShort(m.month),
       entradas: sum(cash_closes.filter(c => monthOf(c.data) === m.month).map(cashCloseTotal)),
+      banco: bankCredits(bank_credits, m.month).total,
     }))
-  }, [all, cash_closes, year, filters])
+  }, [all, cash_closes, bank_credits, year, filters])
 
   const cats = byCategory(rows)
   const top = cats.slice(0, 7)
@@ -71,10 +73,11 @@ export default function Dashboard() {
         <Kpi color="green" icon="€" label="Numerário" value={euro(t.numerario)} note="Despesa contabilística" />
         <Kpi color="purple" icon="Σ" label="Total contabilístico" value={euro(t.total)} note="CGD + numerário" />
         <Kpi color="orange" icon="↗" label="Entradas de caixa" value={euro(entries.total)} note="Caixa diária" />
+        <Kpi color="green" icon="↘" label="Entradas no banco" value={euro(credits.total)} note="Expedia, Stripe, transferências" />
       </div>
 
       <div className="dash-grid top-charts">
-        <Panel title="Gastos por mês" hint={`Despesas contabilísticas e entradas de caixa · clica num mês para o analisar`} actions={<span className="chart-caption">{year}</span>}>
+        <Panel title="Gastos por mês" hint={`Despesas contabilísticas e entradas · clica num mês para o analisar`} actions={<span className="chart-caption">{year}</span>}>
           <div className="chart-box">
             <ResponsiveContainer width="100%" height={260}>
               <BarChart data={monthly} onClick={e => e?.activePayload?.[0] && set({ month: e.activePayload[0].payload.month })}>
@@ -90,6 +93,7 @@ export default function Dashboard() {
                   {monthly.map(m => <Cell key={m.month} fillOpacity={!filters.month || filters.month === m.month ? 1 : 0.45} />)}
                 </Bar>
                 <Bar dataKey="entradas" name="Entradas de caixa" fill="#f2b84b" radius={[6, 6, 0, 0]} cursor="pointer" />
+                <Bar dataKey="banco" name="Entradas no banco" fill="#5bb58b" radius={[6, 6, 0, 0]} cursor="pointer" />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -171,6 +175,7 @@ export default function Dashboard() {
           <div className="detail-card"><div className="label">Maior categoria</div><div className="big small">{cats[0] ? `${cats[0].nome} · ${euro(cats[0].total)}` : '—'}</div></div>
           <div className="detail-card"><div className="label">Maior fornecedor</div><div className="big small">{suppliers[0] ? `${suppliers[0].nome} · ${euro(suppliers[0].total)}` : '—'}</div></div>
           <div className="detail-card"><div className="label">Entradas de caixa</div><div className="big">{euro(entries.total)}</div></div>
+          <div className="detail-card"><div className="label">Entradas no banco</div><div className="big">{euro(credits.total)}</div></div>
         </div>
         <div className="twocol">
           <Panel title="Onde está a sair o dinheiro?">

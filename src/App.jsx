@@ -18,6 +18,7 @@ const FaturaEditor = lazy(() => import('./pages/FaturaEditor'))
 const Numerario = lazy(() => import('./pages/Numerario'))
 const Recebidas = lazy(() => import('./pages/Recebidas'))
 const PorLiquidar = lazy(() => import('./pages/PorLiquidar'))
+const Entradas = lazy(() => import('./pages/Entradas'))
 const Produtos = lazy(() => import('./pages/Produtos'))
 const Categorias = lazy(() => import('./pages/Categorias'))
 const EditarCategorias = lazy(() => import('./pages/EditarCategorias'))
@@ -75,6 +76,7 @@ function Gate() {
             <Route index element={<Dashboard />} />
             <Route path="analise" element={<Analise />} />
             <Route path="movimentos" element={<Movimentos />} />
+            <Route path="entradas" element={<Entradas />} />
             <Route path="faturas" element={<Faturas />} />
             <Route path="faturas/nova" element={<FaturaEditor />} />
             <Route path="faturas/:id" element={<FaturaEditor />} />

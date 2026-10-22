@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { legacy, legacyAsDb } from './helpers.js'
-import { accountingRows, applyFilters, bankToRow, breakfastAnalysis, byCategory, byMonth, byProperty, bySupplier, cashByMonth, cashEntries, invoiceCountsAsExpense, invoiceToRow, totals, attentionCounts } from '../src/lib/finance.js'
+import { accountingRows, applyFilters, bankCredits, bankToRow, breakfastAnalysis, byCategory, byMonth, byProperty, bySupplier, cashByMonth, cashEntries, invoiceCountsAsExpense, invoiceToRow, totals, attentionCounts } from '../src/lib/finance.js'
 
 const db = legacyAsDb()
 const bankRows = db.bank.map(t => bankToRow(t, db.catsById, db.propsById))
@@ -136,5 +136,22 @@ describe('faturas por pagar', () => {
     expect(groups.map(g => [g.nome, g.faturas.length, g.total, g.semValor])).toEqual([['Grão de Trigo', 2, 19.9, 0], ['Makro', 1, 0, 1]])
     expect(groups[0].faturas.map(i => i.id)).toEqual([902, 901])
     expect(attentionCounts({ rows: [], invoices: unpaid, closes: [], checks: [], month: '' }).porLiquidar).toBe(3)
+  })
+})
+
+describe('entradas no banco', () => {
+  it('soma por mês e por origem, sem as excluídas', () => {
+    const credits = [
+      { data_mov: '2026-10-01', valor: '1830.55', tipo: 'Expedia' },
+      { data_mov: '2026-10-03', valor: '0.10', tipo: 'Transferência' },
+      { data_mov: '2026-10-03', valor: '0.20', tipo: 'Transferência' },
+      { data_mov: '2026-10-09', valor: '500', tipo: 'Outra', conta_como_entrada: false },
+      { data_mov: '2026-09-30', valor: '99', tipo: 'Stripe' },
+    ]
+    const r = bankCredits(credits, '2026-10')
+    expect(r.total).toBe(1830.85)
+    expect(r.count).toBe(3)
+    expect(r.porTipo).toEqual([{ tipo: 'Expedia', total: 1830.55, count: 1 }, { tipo: 'Transferência', total: 0.3, count: 2 }])
+    expect(bankCredits(credits, '').total).toBe(1929.85)
   })
 })

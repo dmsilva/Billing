@@ -85,3 +85,27 @@ describe('modo local: faturas por pagar', () => {
     expect(undo.data).toEqual({ faturas: 2 })
   }, 60000)
 })
+
+describe('modo local: entradas e transferências', () => {
+  it('a administradora importa entradas e a receção aloca a transferência', async () => {
+    const sb = createLocalClient({ dataDir: 'memory://', storage: memoryStorage() })
+    await sb.auth.signInWithPassword({ email: 'admin@local', password: 'x' })
+    const imp = await sb.rpc('import_bank_credits', { p_file: 'extrato.xlsx', p_rows: [
+      { import_hash: 'A', data_mov: '2026-10-01', descricao: 'TRAVELSCAPE LLC', valor: 1830.55, tipo: 'Expedia', rececao: false },
+      { import_hash: 'B', data_mov: '2026-10-03', descricao: 'TRF CRED SEPA JOHN SMITH', valor: 120, tipo: 'Transferência', rececao: true, ordenante: 'JOHN SMITH' },
+    ] })
+    expect(imp.error).toBeNull()
+    expect(imp.data).toMatchObject({ novos: 2, transferencias: 1 })
+    await sb.auth.signOut()
+
+    await sb.auth.signInWithPassword({ email: 'rececao@local', password: 'x' })
+    expect((await sb.from('bank_credits').select('id')).data).toEqual([])
+    const list = await sb.from('transferencias').select('*')
+    expect(list.data.map(t => [t.ordenante, Number(t.valor)])).toEqual([['JOHN SMITH', 120]])
+    const r = await sb.rpc('alocar_transferencia', { p_id: list.data[0].id, p_imovel_id: null, p_quarto: '12', p_reserva: 'BK-1', p_notas: null })
+    expect(r.error).toBeNull()
+    const after = await sb.from('transferencias').select('quarto, reserva, alocada_em').eq('id', list.data[0].id).single()
+    expect(after.data).toMatchObject({ quarto: '12', reserva: 'BK-1' })
+    expect(after.data.alocada_em).toBeTruthy()
+  }, 60000)
+})
