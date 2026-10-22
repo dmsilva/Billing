@@ -20,6 +20,9 @@ const TABLES = {
   profiles: { select: '*', order: 'email' },
   // Só existe depois de executar supabase/05_faturas_por_pagar.sql; sem ela a aplicação continua a funcionar.
   invoice_payments: { select: '*', order: 'data', optional: true },
+  // Só existem depois de executar supabase/06_entradas_transferencias.sql.
+  bank_credits: { select: '*', order: 'data_mov', optional: true },
+  transferencias: { select: '*', order: 'data', optional: true },
 }
 
 const PAGE = 1000
@@ -118,7 +121,7 @@ export function DataProvider({ children }) {
     }
   }, [state])
 
-  const value = { ...state, ...derived, paymentsReady: !missing.includes('invoice_payments'), loading, error, online, reload, reloadAll, upsertLocal, removeLocal }
+  const value = { ...state, ...derived, paymentsReady: !missing.includes('invoice_payments'), creditsReady: !missing.includes('bank_credits') && !missing.includes('transferencias'), loading, error, online, reload, reloadAll, upsertLocal, removeLocal }
   return <DataContext.Provider value={value}>{children}</DataContext.Provider>
 }
 

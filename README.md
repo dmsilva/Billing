@@ -12,7 +12,8 @@ Gestão financeira do alojamento: despesas CGD e numerário, faturas com documen
 | --- | --- |
 | **Dashboard** | KPIs do mês (CGD, numerário, total, caixa), gráficos mensais, por categoria e por imóvel, alertas do que precisa de atenção. |
 | **Análise** | Despesa por fornecedor, categoria, imóvel e mês, com filtros. |
-| **Movimentos CGD** | Extrato bancário; importação do extrato da CGD (sem duplicar movimentos já existentes) com sugestão de categoria. |
+| **Movimentos CGD** | Extrato bancário; importação do extrato da CGD (sem duplicar movimentos já existentes) com sugestão de categoria. As saídas entram como despesas e as entradas (créditos) como recebimentos, à parte. |
+| **Entradas no banco** | Créditos do extrato (Expedia/Travelscape, Booking, Airbnb, Stripe, transferências de hóspedes…) por origem; nunca contam como despesa. Gestão das transferências que a receção vê: enviar do extrato ou adicionar à mão (ficam ligadas ao extrato quando este é importado). |
 | **Faturas** | Todas as faturas, com documento original (foto/PDF), linhas de produtos e ligação a um movimento CGD. |
 | **Numerário** | Faturas pagas em dinheiro, que são as únicas faturas que somam à despesa. |
 | **Recebidas** | Faturas enviadas pela receção à espera de validação. |
@@ -21,7 +22,7 @@ Gestão financeira do alojamento: despesas CGD e numerário, faturas com documen
 | **Categorias / Editar categorias** | Totais por categoria e reclassificação de movimentos (com histórico). |
 | **Caixa diária** | Fechos por turno (7h, 15h, 23h), importação do Excel da caixa com pré-visualização, histórico e anulação, edição manual e TPA. |
 | **Conferência** | Conferência dos envelopes na ordem CV → MB → Numerário → próximo envelope. `Enter` ou **OK** aceita; escrever o valor real regista a diferença; cada conferência pode ser corrigida e fica com histórico. |
-| **Receção** (`/rececao`) | Página simples para telemóvel: tirar foto ou escolher foto/PDF, confirmar os campos (lidos automaticamente da fatura quando a leitura está ligada) e enviar. |
+| **Receção** (`/rececao`) | Página simples para telemóvel: tirar foto ou escolher foto/PDF, confirmar os campos (lidos automaticamente da fatura quando a leitura está ligada) e enviar. Aba **Transferências**: pesquisar se a transferência de um hóspede já chegou e alocá-la a um imóvel/quarto e reserva (sem ver o extrato nem o saldo). |
 | **Utilizadores** | Atribuir papéis (administrador, receção, pendente). |
 | **Configuração** | Validação dos dados migrados, importação dos dados guardados no navegador antigo, imóveis. |
 
@@ -109,7 +110,8 @@ O modo local nunca entra no build de produção.
    2. `supabase/02_policies.sql` (RLS, bucket privado `faturas`, políticas de Storage)
    3. `supabase/03_seed_legacy.sql` (dados reais migrados; termina com uma verificação automática)
    4. `supabase/05_faturas_por_pagar.sql` (faturas por pagar e pagamentos agrupados)
-   5. Opcional: `supabase/04_verificacao.sql` (só leitura, mostra os totais)
+   5. `supabase/06_entradas_transferencias.sql` (entradas do extrato e transferências da receção)
+   6. Opcional: `supabase/04_verificacao.sql` (só leitura, mostra os totais)
 
    Os scripts podem ser executados mais do que uma vez sem duplicar dados.
 3. **Database → Publications → supabase_realtime**: confirmar que as tabelas da aplicação estão incluídas (o `01_schema.sql` já as adiciona). Isto mantém vários dispositivos sincronizados em tempo real.

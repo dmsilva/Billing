@@ -10,6 +10,8 @@
 //  - Faturas rejeitadas ou ainda sem valor não entram nos totais.
 //  - Faturas "Por pagar" ficam fora dos totais até serem liquidadas (passam então a CGD ou Numerário).
 //  - "Entradas de caixa" = Dinheiro + CV + MB + City MB dos fechos da caixa diária.
+//  - "Entradas no banco" = créditos do extrato CGD (Expedia, Stripe, transferências de hóspedes…).
+//    Nunca são despesa; as marcadas com conta_como_entrada=false (ex.: entre contas próprias) ficam fora.
 import { sum, sumBy, sameAmount } from './money.js'
 import { monthOf } from './dates.js'
 
@@ -252,6 +254,19 @@ export function unpaidBySupplier(invoices) {
       semValor: g.faturas.filter(i => i.valor == null).length,
     }))
     .sort((a, b) => b.total - a.total || a.nome.localeCompare(b.nome, 'pt'))
+}
+
+// ---------- Entradas no banco ----------
+
+export function bankCredits(credits, month) {
+  const list = credits.filter(c => c.conta_como_entrada !== false && (!month || monthOf(c.data_mov) === month))
+  const byTipo = new Map()
+  for (const c of list) byTipo.set(c.tipo || 'Outra', [...(byTipo.get(c.tipo || 'Outra') || []), c])
+  return {
+    total: sumBy(list, c => c.valor),
+    count: list.length,
+    porTipo: [...byTipo].map(([tipo, l]) => ({ tipo, total: sumBy(l, c => c.valor), count: l.length })).sort((a, b) => b.total - a.total),
+  }
 }
 
 // ---------- Alertas ----------

@@ -11,6 +11,7 @@ export const PAGES = [
   { path: '/analise', label: 'Análise', icon: '◔', title: 'Análise', sub: 'Por fornecedor, categoria, produto e imóvel' },
   { section: 'ENTRADAS' },
   { path: '/caixa', label: 'Caixa diária', icon: '▣', title: 'Caixa diária', sub: 'Fechos dos colaboradores · 7h · 15h · 23h' },
+  { path: '/entradas', label: 'Entradas no banco', icon: '↘', title: 'Entradas no banco', sub: 'Expedia, Stripe, transferências de hóspedes · transferências da receção', badge: 'transferencias' },
   { path: '/conferencia', label: 'Conferência', icon: '✓', title: 'Conferência', sub: 'CV → MB → Numerário → próximo envelope' },
   { section: 'MOVIMENTOS' },
   { path: '/movimentos', label: 'CGD / Extrato', icon: '▤', title: 'CGD / Extrato', sub: 'Todas as saídas da conta bancária CGD' },
@@ -49,13 +50,14 @@ function LocalBanner() {
 
 export default function Layout() {
   const { profile, signOut } = useAuth()
-  const { invoices, online, error, loading } = useData()
+  const { invoices, transferencias, online, error, loading } = useData()
   const [open, setOpen] = useState(false)
   const loc = useLocation()
   const nav = useNavigate()
   const page = pageFor(loc.pathname)
   const pendingReceived = invoices.filter(i => i.origem === 'rececao' && i.estado === 'Por validar').length
   const unpaid = invoices.filter(isUnpaid).length
+  const unallocated = transferencias.filter(t => !t.alocada_em).length
 
   return (
     <div className="app">
@@ -71,6 +73,7 @@ export default function Layout() {
                 <span className="nav-icon">{p.icon}</span>{p.label}
                 {p.badge === 'recebidas' && pendingReceived > 0 && <b className="nav-badge">{pendingReceived}</b>}
                 {p.badge === 'por-liquidar' && unpaid > 0 && <b className="nav-badge">{unpaid}</b>}
+                {p.badge === 'transferencias' && unallocated > 0 && <b className="nav-badge" title="Transferências por alocar">{unallocated}</b>}
               </NavLink>
             ),
           )}

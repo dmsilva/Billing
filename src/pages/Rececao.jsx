@@ -3,6 +3,7 @@ import { useAuth } from '../auth/AuthProvider'
 import { supabase } from '../supabase'
 import { ACCEPTED, uploadInvoiceFile, validateFile } from '../data/files'
 import { readInvoiceFiles } from '../data/invoiceReading'
+import RececaoTransferencias from './RececaoTransferencias'
 import { applyReading, fileType } from '../lib/invoiceReading'
 import { parseMoney } from '../lib/money'
 import { formatDate, formatDateTime, todayIso } from '../lib/dates'
@@ -15,6 +16,7 @@ export default function Rececao() {
   const { user, profile, signOut, isAdmin } = useAuth()
   const [properties, setProperties] = useState([])
   const [mine, setMine] = useState([])
+  const [tab, setTab] = useState(() => (window.location.hash === '#transferencias' ? 'transferencias' : 'fatura'))
   const blank = () => ({ fornecedor: '', data: todayIso(), imovel_id: '', pagamento: 'Numerário', enviado_por: profile?.nome || '', documento: '', valor: '', iva: '', descricao: '', observacoes: '' })
   const [form, setForm] = useState(blank)
   const formRef = useRef()
@@ -117,9 +119,16 @@ export default function Rececao() {
     <div className="rececao">
       <div className="wrap">
         <div className="rec-top">
-          <div><div className="rec-brand">Fatura<span>Claro</span></div><div className="sub">Envio de faturas · Receção</div></div>
+          <div><div className="rec-brand">Fatura<span>Claro</span></div><div className="sub">Receção</div></div>
           <div className="rec-user">{profile?.nome || profile?.email}<br />{isAdmin && <a href="/">Abrir aplicação</a>} <button className="link-btn" onClick={signOut}>Sair</button></div>
         </div>
+        <div className="rec-tabs" role="tablist">
+          {[['fatura', '📷 Enviar fatura'], ['transferencias', '🏦 Transferências']].map(([k, label]) => (
+            <button key={k} type="button" role="tab" aria-selected={tab === k} className={tab === k ? 'on' : ''}
+              onClick={() => { setTab(k); window.history.replaceState(null, '', k === 'fatura' ? window.location.pathname : `#${k}`) }}>{label}</button>
+          ))}
+        </div>
+        {tab === 'transferencias' ? <RececaoTransferencias properties={properties} /> : <>
         <form className="panel" onSubmit={send}>
           <h2>Enviar fatura</h2>
           <div className="small">Fotografa a fatura ou recibo, escolhe como foi pago e envia. O original fica arquivado em segurança para validação.</div>
@@ -181,6 +190,7 @@ export default function Rececao() {
             ))}
           </div>
         )}
+        </>}
       </div>
     </div>
   )

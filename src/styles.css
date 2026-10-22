@@ -120,7 +120,8 @@ a.attention-item{color:inherit;text-decoration:none}
 .howto{margin:0 0 12px;padding-left:20px;line-height:1.7}
 .file-button{display:inline-block;margin:6px 0 12px}
 .file-button input{display:none}
-.check-inline{display:inline-flex;gap:6px;align-items:center;font-size:12px}
+.check-inline input{width:auto;margin:0}
+.check-inline,.modal label.check-inline{display:inline-flex;gap:6px;align-items:center;font-size:12px}
 .icon-btn{border:0;background:#f1f4f9;border-radius:9px;width:32px;height:32px}
 
 /* Formulários */
@@ -264,3 +265,29 @@ td small{display:block;font-size:11px}td small.warn{color:#a66a05}
 .pay-toggle.two{grid-template-columns:1fr 1fr}.pay-toggle button:disabled{opacity:.55;cursor:not-allowed}
 .pay-bar{position:sticky;bottom:12px;z-index:5;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;background:#fff;border:1px solid #d9e2f1;border-radius:14px;padding:12px 16px;margin:0 0 18px;box-shadow:0 10px 30px rgba(26,44,78,.12)}
 .candidate.on{border-color:var(--accent);background:var(--accent2)}
+/* Entradas no banco e transferências */
+.dash-kpis{grid-template-columns:repeat(auto-fit,minmax(235px,1fr))}
+.rececao .badge.ok,.rececao .badge.bad{margin-top:0;padding:4px 8px;border-radius:999px}
+.detail-grid{grid-template-columns:repeat(auto-fit,minmax(170px,1fr))}
+.inline-select{padding:5px 8px;border:1px solid var(--line);border-radius:8px;font:inherit;font-size:13px;background:#fff}
+td.nowrap,.nowrap{white-space:nowrap}
+td.wrap{white-space:normal;min-width:180px}
+.rececao .rec-tabs{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px}
+.rececao .rec-tabs button{padding:13px;border:1px solid #d9dde7;border-radius:12px;background:#fff;font:inherit;font-weight:700;cursor:pointer;color:#344054}
+.rececao .rec-tabs button.on{border-color:#d63384;background:#fff2f8;color:#b4236d}
+.rececao .trf-search{margin-top:14px}
+.rececao .trf-filter{display:flex;gap:6px;flex-wrap:wrap;margin:12px 0 4px}
+.rececao .trf-filter button{padding:7px 12px;border:1px solid #d9dde7;border-radius:99px;background:#fff;font:inherit;font-size:13px;cursor:pointer}
+.rececao .trf-filter button.on{background:#172033;border-color:#172033;color:#fff}
+.rececao .trf-row{border-top:1px solid #eef0f4;padding:12px 0}
+.rececao .trf-main{display:flex;justify-content:space-between;gap:12px;cursor:pointer}
+.rececao .trf-main strong{display:block}.rececao .trf-main .small{display:block;margin-top:3px}
+.rececao .trf-side{text-align:right;display:flex;flex-direction:column;align-items:flex-end;gap:5px}
+.rececao .trf-value{font-size:18px;white-space:nowrap}
+.rececao .trf-row>.link-btn{margin-top:6px;padding:0;background:none;border:0;color:#b4236d;font-weight:700;cursor:pointer;font:inherit;font-size:14px}
+.rececao .trf-form{background:#f8f9fc;border:1px solid #eef0f4;border-radius:12px;padding:4px 14px 14px;margin-top:10px}
+.rececao .trf-actions{display:flex;gap:8px;justify-content:flex-end;align-items:center;margin-top:14px;flex-wrap:wrap}
+.rececao .trf-actions .btn{width:auto;margin-top:0;padding:12px 20px;font-size:15px}
+.rececao .trf-actions .secondary{padding:11px 14px;border:1px solid #d9dde7;border-radius:11px;background:#fff;font:inherit;cursor:pointer}
+.check-inline input{width:auto;margin:0}
+.check-inline,.modal label.check-inline{display:flex;gap:6px;align-items:center;font-size:13px;font-weight:600;white-space:nowrap}
