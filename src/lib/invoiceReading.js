@@ -10,8 +10,11 @@ export const READING_SCHEMA = {
     documento: { type: ['string', 'null'], description: 'Número do documento, por exemplo FT 2026/1234' },
     valor_total: { type: ['number', 'null'], description: 'Total a pagar com IVA, em euros' },
     iva: { type: ['number', 'null'], description: 'Total de IVA, em euros' },
+    pagamento: { type: 'string', enum: ['numerario', 'cartao', 'transferencia', 'desconhecido'], description: 'Como foi pago, se o documento o indicar' },
+    cliente: { type: ['string', 'null'], description: 'Nome e morada do cliente (adquirente) tal como aparecem no documento' },
+    descricao: { type: ['string', 'null'], description: 'Resumo curto, em português, do que foi comprado (máx. 80 caracteres)' },
   },
-  required: ['fornecedor', 'nif', 'data', 'documento', 'valor_total', 'iva'],
+  required: ['fornecedor', 'nif', 'data', 'documento', 'valor_total', 'iva', 'pagamento', 'cliente', 'descricao'],
   additionalProperties: false,
 }
 
@@ -21,7 +24,10 @@ Extrai os dados do documento. Usa null para tudo o que não consigas ler com seg
 - nif: o NIF do emitente, não o do cliente.
 - data: a data de emissão, em AAAA-MM-DD.
 - valor_total: o total final pago, com IVA incluído.
-- iva: o total de IVA do documento.`
+- iva: o total de IVA do documento.
+- pagamento: numerario se diz numerário/dinheiro; cartao se diz multibanco, MB, cartão, Visa, TPA; transferencia se diz transferência/MB Way/débito direto; senão desconhecido.
+- cliente: o nome e a morada do cliente/adquirente, se existirem.
+- descricao: um resumo curto do que foi comprado, por exemplo "Produtos de limpeza e pão".`
 
 // Tipos aceites por extensão, para ficheiros que o telemóvel envia sem tipo.
 const BY_EXTENSION = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp', heic: 'image/heic', heif: 'image/heif', pdf: 'application/pdf' }
@@ -65,13 +71,31 @@ export function normalizeReading(raw) {
     documento: cleanText(r.documento, 60),
     valor_total: cleanAmount(r.valor_total),
     iva: cleanAmount(r.iva),
+    pagamento: ['numerario', 'cartao', 'transferencia'].includes(r.pagamento) ? r.pagamento : null,
+    cliente: cleanText(r.cliente, 200),
+    descricao: cleanText(r.descricao, 120),
   }
+}
+
+const fold = s => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+const GENERIC = new Set(['chalet', 'casa', 'hotel', 'alojamento', 'do', 'da', 'de', 'dos', 'das', 'd'])
+
+// Imóvel cujo nome aparece no cliente da fatura (ex.: "Chalet do Lago"); só se for inequívoco.
+export function matchProperty(cliente, properties) {
+  const text = fold(cliente)
+  if (!text) return null
+  const hits = (properties || []).filter(p => {
+    const words = fold(p.nome).split(/[^a-z0-9]+/).filter(w => w.length > 2 && !GENERIC.has(w))
+    return words.length && words.every(w => new RegExp(`\\b${w}\\b`).test(text))
+  })
+  return hits.length === 1 ? hits[0].id : null
 }
 
 const formatAmount = n => n.toFixed(2).replace('.', ',')
 
 // Preenche apenas os campos que a pessoa ainda não escreveu.
-export function applyReading(form, reading, today) {
+// O meio de pagamento e o imóvel têm sempre um valor; só mudam se a pessoa ainda não lhes mexeu (touched).
+export function applyReading(form, reading, today, { properties = [], touched = {} } = {}) {
   const r = normalizeReading(reading)
   const next = { ...form }
   const filled = []
@@ -89,6 +113,16 @@ export function applyReading(form, reading, today) {
   if (r.nif && !String(form.observacoes || '').includes(r.nif)) {
     next.observacoes = [String(form.observacoes || '').trim(), `NIF do fornecedor: ${r.nif}`].filter(Boolean).join('\n')
     filled.push('nif')
+  }
+  fill('descricao', r.descricao)
+  if (r.pagamento && !touched.pagamento) {
+    const pagamento = r.pagamento === 'numerario' ? 'Numerário' : 'CGD'
+    if (pagamento !== form.pagamento) { next.pagamento = pagamento; filled.push('pagamento') }
+  }
+  const imovel = matchProperty(r.cliente, properties)
+  if (imovel !== null && !touched.imovel_id && String(imovel) !== String(form.imovel_id)) {
+    next.imovel_id = imovel
+    filled.push('imovel_id')
   }
   if (r.iva !== null && (form.iva === undefined || form.iva === null || form.iva === '')) {
     next.iva = formatAmount(r.iva)

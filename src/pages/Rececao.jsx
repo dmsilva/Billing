@@ -7,12 +7,14 @@ import { applyReading, fileType } from '../lib/invoiceReading'
 import { parseMoney } from '../lib/money'
 import { formatDate, formatDateTime, todayIso } from '../lib/dates'
 
+const FILLED_LABEL = { fornecedor: 'fornecedor', data: 'data', documento: 'nº do documento', valor: 'valor', iva: 'IVA', nif: 'NIF', descricao: 'o que foi comprado', pagamento: 'meio de pagamento', imovel_id: 'imóvel' }
+
 // Página independente para a receção: fotografar/enviar faturas. Não mostra dados financeiros.
 export default function Rececao() {
   const { user, profile, signOut, isAdmin } = useAuth()
   const [properties, setProperties] = useState([])
   const [mine, setMine] = useState([])
-  const blank = () => ({ fornecedor: '', data: todayIso(), imovel_id: '', pagamento: 'Numerário', enviado_por: profile?.nome || '', documento: '', valor: '', iva: '', observacoes: '' })
+  const blank = () => ({ fornecedor: '', data: todayIso(), imovel_id: '', pagamento: 'Numerário', enviado_por: profile?.nome || '', documento: '', valor: '', iva: '', descricao: '', observacoes: '' })
   const [form, setForm] = useState(blank)
   const formRef = useRef()
   formRef.current = form
@@ -23,6 +25,7 @@ export default function Rececao() {
   const fileRef = useRef()
   const cameraRef = useRef()
   const readId = useRef(0)
+  const touched = useRef({})
 
   async function loadMine() {
     const { data } = await supabase.from('invoices').select('id, fornecedor, data, pagamento, estado, created_at, invoice_files(id)').eq('submitted_by', user.id).order('created_at', { ascending: false }).limit(10)
@@ -59,10 +62,10 @@ export default function Rececao() {
     if (id !== readId.current) return
     if (res.desligada) return setReading(null)
     if (res.error) return setReading({ tone: 'bad', text: res.error })
-    const { form: next, filled } = applyReading(formRef.current, res.leitura, todayIso())
+    const { form: next, filled } = applyReading(formRef.current, res.leitura, todayIso(), { properties, touched: touched.current })
     setForm(next)
     setReading(filled.length
-      ? { tone: 'ok', text: 'Campos preenchidos a partir da fatura. Confirma se estão certos antes de enviar.' }
+      ? { tone: 'ok', text: `Lido da fatura: ${filled.map(k => FILLED_LABEL[k]).join(', ')}. Confirma se está certo antes de enviar.` }
       : { tone: 'bad', text: 'Não foi possível ler os dados desta fatura. Preenche os campos à mão.' })
   }
 
@@ -84,7 +87,7 @@ export default function Rececao() {
     try {
       const { data: inv, error } = await supabase.from('invoices').insert({
         fornecedor: form.fornecedor.trim() || null, data: form.data || null, imovel_id: form.imovel_id ? Number(form.imovel_id) : null,
-        pagamento: form.pagamento, enviado_por: form.enviado_por.trim() || null, documento: form.documento.trim() || null,
+        pagamento: form.pagamento, enviado_por: form.enviado_por.trim() || null, documento: form.documento.trim() || null, descricao: form.descricao.trim() || null,
         valor, iva, observacoes: form.observacoes.trim() || null, origem: 'rececao', estado: 'Por validar', submitted_by: user.id,
       }).select('id').single()
       if (error) throw error
@@ -99,6 +102,7 @@ export default function Rececao() {
       setFiles([])
       setReading(null)
       readId.current++
+      touched.current = {}
       loadMine()
     } catch (err) {
       setStatus({ tone: 'bad', text: `Não foi possível enviar: ${err.message}` })
@@ -145,11 +149,11 @@ export default function Rececao() {
             <label>Fornecedor<input value={form.fornecedor} onChange={e => set({ fornecedor: e.target.value })} placeholder="Ex.: Pingo Doce" /></label>
             <label>Data da fatura<input type="date" value={form.data} onChange={e => set({ data: e.target.value })} /></label>
           </div>
-          <label>Imóvel<select value={form.imovel_id} onChange={e => set({ imovel_id: e.target.value })}>{properties.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}</select></label>
+          <label>Imóvel<select value={form.imovel_id} onChange={e => { touched.current.imovel_id = true; set({ imovel_id: e.target.value }) }}>{properties.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}</select></label>
           <label>Meio de pagamento</label>
           <div className="pay">
             {['Numerário', 'CGD'].map(p => (
-              <label key={p}><input type="radio" name="pay" value={p} checked={form.pagamento === p} onChange={() => set({ pagamento: p })} /><span>{p === 'Numerário' ? '💶 Numerário' : '🏦 CGD'}</span></label>
+              <label key={p}><input type="radio" name="pay" value={p} checked={form.pagamento === p} onChange={() => { touched.current.pagamento = true; set({ pagamento: p }) }} /><span>{p === 'Numerário' ? '💶 Numerário' : '🏦 CGD'}</span></label>
             ))}
           </div>
           <div className="grid">
@@ -160,6 +164,7 @@ export default function Rececao() {
             <label>Documento / nº fatura <span className="opt">(opcional)</span><input value={form.documento} onChange={e => set({ documento: e.target.value })} placeholder="Ex.: FT 2026/1234" /></label>
             <label>IVA <span className="opt">(opcional)</span><input inputMode="decimal" value={form.iva} onChange={e => set({ iva: e.target.value })} placeholder="0,00" /></label>
           </div>
+          <label>O que foi comprado <span className="opt">(opcional)</span><input value={form.descricao} onChange={e => set({ descricao: e.target.value })} placeholder="Ex.: Produtos de limpeza" /></label>
           <label>Observações <span className="opt">(opcional)</span><textarea value={form.observacoes} onChange={e => set({ observacoes: e.target.value })} placeholder="Alguma informação importante…" /></label>
           <button className="btn" disabled={busy}>{busy ? 'A enviar…' : 'Enviar fatura'}</button>
           {status && <div className={status.tone === 'ok' ? 'ok' : 'err'}>{status.text}</div>}

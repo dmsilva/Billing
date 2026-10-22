@@ -28,8 +28,23 @@ export function contentBlocks(files) {
   return { blocks }
 }
 
+// Mensagem útil para quem está na receção; o detalhe técnico fica nos registos do Netlify.
+export function friendlyClaudeError(err) {
+  const status = err?.status
+  const text = String(err?.message || '')
+  if (/credit balance/i.test(text)) return 'A conta da Anthropic não tem saldo. Carrega créditos em console.anthropic.com (Billing).'
+  if (status === 401) return 'A ANTHROPIC_API_KEY configurada no Netlify não é válida.'
+  if (status === 403) return 'A chave da Anthropic não tem permissão para este pedido.'
+  if (status === 404) return 'O modelo de leitura não está disponível para esta conta da Anthropic.'
+  if (status === 413) return 'O ficheiro é demasiado grande para ser lido.'
+  if (status === 429) return 'Foram feitos muitos pedidos seguidos. Tenta outra vez daqui a um minuto.'
+  if (status === 529 || status >= 500) return 'O serviço de leitura está temporariamente indisponível. Tenta outra vez daqui a pouco.'
+  if (status === 400) return `A leitura automática recusou o pedido: ${text.slice(0, 200)}`
+  return 'A leitura automática falhou.'
+}
+
 // Separado do handler para poder ser testado com clientes simulados.
-export async function readInvoice({ supabase, anthropic, token, body }) {
+export async function readInvoice({ supabase, anthropic, token, body, model = 'claude-opus-5-5' }) {
   if (!token) return json(401, { error: 'Sessão em falta. Volta a entrar.' })
   const { data: who, error: whoErr } = await supabase.auth.getUser(token)
   if (whoErr || !who?.user) return json(401, { error: 'Sessão inválida. Volta a entrar.' })
@@ -42,16 +57,20 @@ export async function readInvoice({ supabase, anthropic, token, body }) {
   let msg
   try {
     msg = await anthropic.messages.create({
-      model: 'claude-opus-5-5',
+      model,
       max_tokens: 4000,
       output_config: { effort: 'low', format: { type: 'json_schema', schema: READING_SCHEMA } },
       messages: [{ role: 'user', content: [...blocks, { type: 'text', text: READING_PROMPT }] }],
     })
   } catch (err) {
-    return json(502, { error: `A leitura automática falhou: ${err.message}` })
+    console.error('ler-fatura: erro da Anthropic', err?.status, err?.message)
+    return json(502, { error: friendlyClaudeError(err) })
   }
   const text = msg.content.find(b => b.type === 'text')?.text
-  if (msg.stop_reason !== 'end_turn' || !text) return json(422, { error: 'Não foi possível ler esta fatura.' })
+  if (msg.stop_reason !== 'end_turn' || !text) {
+    console.error('ler-fatura: sem resposta utilizável', msg.stop_reason)
+    return json(422, { error: 'Não foi possível ler esta fatura.' })
+  }
   try {
     return json(200, { leitura: normalizeReading(JSON.parse(text)) })
   } catch {
@@ -69,5 +88,5 @@ export default async req => {
   const supabase = createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false }, global: { headers: { Authorization: `Bearer ${token}` } } })
   let body
   try { body = await req.json() } catch { return json(400, { error: 'Pedido inválido.' }) }
-  return readInvoice({ supabase, anthropic: new Anthropic(), token, body })
+  return readInvoice({ supabase, anthropic: new Anthropic(), token, body, model: process.env.ANTHROPIC_MODEL || undefined })
 }
