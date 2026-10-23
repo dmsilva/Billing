@@ -112,6 +112,7 @@ export default function Resultados() {
             <li><strong>Faturado</strong> = tudo o que a receção registou na caixa diária (dinheiro, CV, MB, City MB) + entradas no banco que não passam pela caixa (Expedia, Booking, Airbnb, Stripe, transferências de hóspedes).</li>
             <li>Os créditos <strong>TPA / Multibanco</strong> e os <strong>depósitos</strong> não contam outra vez: são o dinheiro da caixa a chegar ao banco. As entradas marcadas como “não conta” também ficam fora.</li>
             <li><strong>Despesas</strong> = saídas da conta CGD (sem transferências entre empresas) + faturas pagas em numerário. Faturas pagas por CGD não somam outra vez.</li>
+            <li>A <strong>taxa turística</strong> (City MB, em numerário ou cobrada pelas plataformas) entra no faturado e sai nas despesas quando se paga à Câmara (“Taxa turística / CML”). No resultado anula-se: não é lucro nem prejuízo.</li>
             <li><strong>Resultado</strong> = faturado − despesas. Negativo quer dizer prejuízo nesse mês.</li>
           </ul>
         </Panel>
@@ -137,7 +138,8 @@ function MonthRows({ m, open, onToggle }) {
             <div>
               <div className="subhead">Caixa diária ({m.caixa.dias} dias)</div>
               <Line label="Recebido em numerário" v={m.caixa.dinheiro} />
-              <Line label="MB + City MB" v={m.caixa.cartoes} />
+              <Line label="MB" v={m.caixa.mb} />
+              <Line label="Taxa turística em MB (City MB)" v={m.caixa.cityTax} />
               <Line label="CV" v={m.caixa.cv} />
             </div>
             <div>
