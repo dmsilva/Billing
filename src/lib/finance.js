@@ -10,6 +10,8 @@
 //  - Faturas rejeitadas ou ainda sem valor não entram nos totais.
 //  - Faturas "Por pagar" ficam fora dos totais até serem liquidadas (passam então a CGD ou Numerário).
 //  - "Entradas de caixa" = Dinheiro + CV + MB + City MB dos fechos da caixa diária.
+//    City MB é a taxa turística paga em MB: entra no faturado e sai nas despesas quando se paga à
+//    Câmara (categoria "Taxa turística / CML"), por isso no resultado anula-se.
 //  - "Entradas no banco" = créditos do extrato CGD (Expedia, Stripe, transferências de hóspedes…).
 //    Nunca são despesa; as marcadas com conta_como_entrada=false (ex.: entre contas próprias) ficam fora.
 import { sum, sumBy, sameAmount } from './money.js'
@@ -326,7 +328,7 @@ export function monthResult(month, { closes, credits, expenseRows, encargos = []
   const irs = Number(enc?.irs || 0)
   return {
     month,
-    caixa: { dinheiro: cx.dinheiro, cartoes: sum([cx.mb, cx.cityMb]), cv: cx.cv, total: cx.total, dias: cx.dias },
+    caixa: { dinheiro: cx.dinheiro, mb: cx.mb, cityTax: cx.cityMb, cv: cx.cv, total: cx.total, dias: cx.dias },
     banco,
     bancoPorTipo: [...porTipo].map(([tipo, vs]) => ({ tipo, total: sum(vs) })).sort((a, b) => b.total - a.total),
     foraDoFaturado: sumBy(cr.filter(c => !creditCountsAsRevenue(c)), c => c.valor),
