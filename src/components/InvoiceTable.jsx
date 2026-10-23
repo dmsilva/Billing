@@ -12,20 +12,22 @@ export function exportInvoices(rows, name) {
   ), name)
 }
 
-export default function InvoiceTable({ rows, showOrigin }) {
+// selected/onSelect (opcional): caixas para escolher várias faturas de uma vez.
+export default function InvoiceTable({ rows, showOrigin, selected, onSelect }) {
   const nav = useNavigate()
   return (
     <div className="tablewrap tall">
       <table>
         <thead>
-          <tr><th>Data</th><th>Fornecedor</th><th>Documento</th><th>Descrição</th><th>Categoria</th><th>Imóvel</th><th>Pagamento</th><th>Contabilidade</th><th>IVA</th><th>Estado</th>{showOrigin && <th>Enviado por</th>}<th className="money">Valor</th></tr>
+          <tr>{onSelect && <th><input type="checkbox" aria-label="Selecionar todas" checked={rows.length > 0 && rows.every(r => selected.has(r.id))} onChange={e => onSelect(rows.map(r => r.id), e.target.checked)} /></th>}<th>Data</th><th>Fornecedor</th><th>Documento</th><th>Descrição</th><th>Categoria</th><th>Imóvel</th><th>Pagamento</th><th>Contabilidade</th><th>IVA</th><th>Estado</th>{showOrigin && <th>Enviado por</th>}<th className="money">Valor</th></tr>
         </thead>
         <tbody>
           {rows.length ? rows.map(r => {
             const inv = r.source
             const files = inv.invoice_files?.length || 0
             return (
-              <tr key={r.id} className="clickable" onClick={() => nav(`/faturas/${r.id}`)}>
+              <tr key={r.id} className={`clickable ${selected?.has(r.id) ? 'row-selected' : ''}`} onClick={() => nav(`/faturas/${r.id}`)}>
+                {onSelect && <td onClick={e => e.stopPropagation()}><input type="checkbox" aria-label={`Selecionar ${r.fornecedor || 'fatura'}`} checked={selected.has(r.id)} onChange={e => onSelect([r.id], e.target.checked)} /></td>}
                 <td>{formatDate(r.data)}</td>
                 <td><strong>{r.fornecedor || '—'}</strong>{files > 0 && <div className="muted small">📎 {files} ficheiro{files > 1 ? 's' : ''}</div>}</td>
                 <td>{r.documento || '—'}</td>
@@ -40,7 +42,7 @@ export default function InvoiceTable({ rows, showOrigin }) {
                 <td className="money">{r.valor == null ? '—' : euro(r.valor)}</td>
               </tr>
             )
-          }) : <Empty colSpan={showOrigin ? 12 : 11}>Sem documentos para os filtros selecionados.</Empty>}
+          }) : <Empty colSpan={(showOrigin ? 12 : 11) + (onSelect ? 1 : 0)}>Sem documentos para os filtros selecionados.</Empty>}
         </tbody>
       </table>
     </div>
