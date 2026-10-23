@@ -27,6 +27,23 @@ describe('extrato CGD em PDF', () => {
     expect(checkBalances(matrix, parseMoney)).toEqual({ verificadas: 4, erradas: 0 })
   })
 
+  it('lê o formato do extrato de depósitos à ordem (data de movimento "-", coluna "Data Valor")', () => {
+    const line = (y, parts) => parts.map(([x, str, w = str.length * 4]) => ({ str, x, y, w }))
+    const page = [
+      ...line(576, [[142, 'Extrato n.º 010/2026'], [244, 'Emissão 2026-10-06'], [354, 'Período 2026-09-01 a 2026-09-30']]),
+      ...line(462, [[63, 'Dt. Mov.'], [109, 'Data Valor', 38], [153, 'Descrição', 43], [440, 'Valor', 22], [480, 'Saldo Contabilístico', 87]]),
+      ...line(451, [[153, 'Saldo Anterior'], [527, '62.070,46', 40]]),
+      ...line(440, [[71, '-', 3], [84, '-', 3], [102, '2026-09-01', 46], [153, 'ENDESA ENERGIA'], [437, '-42,55', 25], [527, '62.027,91', 40]]),
+      ...line(378, [[71, '-', 3], [84, '-', 3], [102, '2026-09-01', 46], [153, 'TRF STRIPE TECHNOLOGY'], [435, '194,78', 27], [527, '62.222,69', 40]]),
+      ...line(368, [[71, '-', 3], [84, '-', 3], [102, '2026-09-01', 46], [153, '00854353 POS VENDAS'], [440, '72,57', 22], [527, '62.295,26', 40]]),
+    ]
+    const matrix = statementMatrix([page])
+    const r = parseBankStatement(matrix)
+    expect(r.records.map(x => [x.data_mov, x.descricao, x.valor, x.saldo])).toEqual([['2026-09-01', 'ENDESA ENERGIA', 42.55, 62027.91]])
+    expect(r.credits.map(x => [x.descricao, x.valor, x.tipo])).toEqual([['TRF STRIPE TECHNOLOGY', 194.78, 'Stripe'], ['00854353 POS VENDAS', 72.57, 'TPA / Multibanco']])
+    expect(checkBalances(matrix, parseMoney)).toEqual({ verificadas: 2, erradas: 0 })
+  })
+
   it('aceita datas sem ano, valores com sinal no fim e extratos do mais recente para o mais antigo', () => {
     const line = (y, parts) => parts.map(([x, str, w = str.length * 4]) => ({ str, x, y, w }))
     const page = [

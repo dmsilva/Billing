@@ -69,7 +69,7 @@ export default function Entradas() {
       <div className="grid4">
         <Kpi color="green" icon="↘" label="Entradas no banco" value={euro(resumo.total)} note={`${resumo.count} movimento(s) do extrato`} />
         <Kpi color="blue" icon="✈" label="Plataformas" value={euro(tipo('Expedia') + tipo('Booking') + tipo('Airbnb'))} note="Expedia, Booking, Airbnb (já sem comissões)" />
-        <Kpi color="purple" icon="◆" label="Stripe" value={euro(tipo('Stripe'))} note="Pagamentos com cartão" />
+        <Kpi color="purple" icon="◆" label="Cartões" value={euro(tipo('TPA / Multibanco') + tipo('Stripe'))} note={`TPA ${euro(tipo('TPA / Multibanco'))} · Stripe ${euro(tipo('Stripe'))}`} />
         <Kpi color="orange" icon="⇄" label="Transferências" value={euro(tipo('Transferência'))} note="De hóspedes e outras" />
       </div>
 

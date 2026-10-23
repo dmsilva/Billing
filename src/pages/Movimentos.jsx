@@ -73,9 +73,9 @@ function BankImportModal({ onClose, existing, categoriesById, propertiesById, on
   const [file, setFile] = useState(null)
   const [parsed, setParsed] = useState(null)
   const [busy, setBusy] = useState(false)
-  // Um movimento já existe se tiver a mesma chave ou, havendo saldo, a mesma data, valor e saldo
-  // (o PDF e o Excel do banco podem escrever a descrição de forma ligeiramente diferente).
-  const sameMove = r => `${r.data_mov}|${Number(r.valor).toFixed(2)}|${r.saldo == null || r.saldo === '' ? '' : Number(r.saldo).toFixed(2)}`
+  // Um movimento já existe se tiver a mesma chave ou, havendo saldo, o mesmo valor e saldo
+  // (o PDF e o Excel do banco escrevem a descrição e a data de movimento de forma diferente).
+  const sameMove = r => `${Number(r.valor).toFixed(2)}|${Number(r.saldo).toFixed(2)}`
   const hashes = useMemo(() => new Set([...existing.map(t => t.import_hash), ...existing.filter(t => t.saldo != null).map(sameMove)]), [existing])
   const creditHashes = useMemo(() => new Set([...bank_credits.map(c => c.import_hash), ...bank_credits.filter(c => c.saldo != null).map(sameMove)]), [bank_credits])
   const known = (set, r) => set.has(r.import_hash) || (r.saldo != null && set.has(sameMove(r)))

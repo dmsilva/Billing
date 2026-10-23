@@ -69,14 +69,15 @@ export function parseBankStatement(matrix) {
 }
 
 // Origem de uma entrada, a partir do texto do banco.
-export const CREDIT_TYPES = ['Expedia', 'Booking', 'Airbnb', 'Stripe', 'Transferência', 'Depósito', 'Outra']
+export const CREDIT_TYPES = ['Expedia', 'Booking', 'Airbnb', 'Stripe', 'TPA / Multibanco', 'Transferência', 'Depósito', 'Outra']
 const CREDIT_RULES = [
   ['Expedia', /EXPEDIA|TRAVEL ?SCAPE|HOTELS\.?COM|VRBO/],
   ['Booking', /BOOKING/],
   ['Airbnb', /AIRBNB/],
   ['Stripe', /STRIPE/],
+  ['TPA / Multibanco', /POS VENDAS|\bTPA\b|\bSIBS\b/],
   ['Depósito', /^DEP(OSITO|\.|\s)|DEPOSITO/],
-  ['Transferência', /\bTRF\b|TRANSF|SEPA|MB ?WAY|\bTRANS\b|INSTANT/],
+  ['Transferência', /\bTRF\b|\bTFI\b|TRANSF|SEPA|MB ?WAY|\bTRANS\b|INSTANT/],
 ]
 export function classifyCredit(descricao) {
   const d = norm(descricao).toUpperCase()

@@ -63,10 +63,14 @@ const center = w => w.x + w.w / 2
 
 function findHeader(line) {
   const cols = {}
+  // Colunas de valores: a ocorrência mais à direita ("Data Valor" também tem a palavra "Valor").
   for (const w of line.words) {
     const n = norm(w.s)
-    for (const [k, names] of Object.entries(HEADER)) if (cols[k] === undefined && names.includes(n)) cols[k] = { x: w.x, c: center(w), r: w.x + w.w }
+    for (const [k, names] of Object.entries(HEADER)) {
+      if (names.includes(n) && (cols[k] === undefined || k !== 'descricao')) cols[k] = { x: w.x, c: center(w), r: w.x + w.w }
+    }
   }
+  if (cols.montante && cols.descricao && cols.montante.x < cols.descricao.x) delete cols.montante
   const ok = cols.saldo && ((cols.debito && cols.credito) || cols.montante)
   return ok ? cols : null
 }
@@ -117,6 +121,8 @@ export function statementMatrix(pages) {
       const words = line.words
       const dates = []
       let i = 0
+      // Data em falta aparece como "-" (a CGD deixa a data de movimento assim no PDF).
+      while (i < words.length && i < 2 && /^[-–]$/.test(words[i].s)) i++
       while (i < words.length && dates.length < 2 && DATE.test(words[i].s) && isoDate(words[i].s, latest)) dates.push(isoDate(words[i++].s, latest))
       const rest = words.slice(i)
       const amounts = rest.filter(w => AMOUNT.test(w.s) && w.x > (cols.descricao?.x ?? 0) + 40)
