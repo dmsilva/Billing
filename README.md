@@ -12,7 +12,7 @@ Gestão financeira do alojamento: despesas CGD e numerário, faturas com documen
 | --- | --- |
 | **Dashboard** | KPIs do mês (CGD, numerário, total, caixa), gráficos mensais, por categoria e por imóvel, alertas do que precisa de atenção. |
 | **Análise** | Despesa por fornecedor, categoria, imóvel e mês, com filtros. |
-| **Movimentos CGD** | Extrato bancário; importação do extrato da CGD (sem duplicar movimentos já existentes) com sugestão de categoria. As saídas entram como despesas e as entradas (créditos) como recebimentos, à parte. |
+| **Movimentos CGD** | Extrato bancário; importação do extrato da CGD em PDF, Excel ou CSV (sem duplicar movimentos já existentes; o PDF é lido no navegador e conferido pelos saldos) com sugestão de categoria. As saídas entram como despesas e as entradas (créditos) como recebimentos, à parte. |
 | **Entradas no banco** | Créditos do extrato (Expedia/Travelscape, Booking, Airbnb, Stripe, transferências de hóspedes…) por origem; nunca contam como despesa. Gestão das transferências que a receção vê: enviar do extrato ou adicionar à mão (ficam ligadas ao extrato quando este é importado). |
 | **Faturas** | Todas as faturas, com documento original (foto/PDF), linhas de produtos e ligação a um movimento CGD. |
 | **Numerário** | Faturas pagas em dinheiro, que são as únicas faturas que somam à despesa. |

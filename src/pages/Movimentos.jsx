@@ -6,11 +6,12 @@ import { useFilters } from '../data/FiltersProvider'
 import FilterBar from '../components/FilterBar'
 import { Badge, Empty, Kpi, Modal, Panel, PaymentBadge, useToast } from '../components/ui'
 import { applyFilters, PAYMENT_CGD } from '../lib/finance'
-import { euro, sumBy } from '../lib/money'
+import { euro, parseMoney, sumBy } from '../lib/money'
 import { formatDate, formatDateTime } from '../lib/dates'
 import { decimalPt, downloadText, toCsv } from '../lib/csv'
 import { CREDIT_TYPES, goesToReception, guessPayer, matchTransfer, parseBankStatement, suggestClassification } from '../lib/bankImport'
 import { parseCsvText } from '../lib/cashImport'
+import { checkBalances, statementMatrix } from '../lib/pdfStatement'
 import { supabase } from '../supabase'
 
 export default function Movimentos() {
@@ -72,21 +73,37 @@ function BankImportModal({ onClose, existing, categoriesById, propertiesById, on
   const [file, setFile] = useState(null)
   const [parsed, setParsed] = useState(null)
   const [busy, setBusy] = useState(false)
-  const hashes = useMemo(() => new Set(existing.map(t => t.import_hash)), [existing])
-  const creditHashes = useMemo(() => new Set(bank_credits.map(c => c.import_hash)), [bank_credits])
+  // Um movimento já existe se tiver a mesma chave ou, havendo saldo, o mesmo valor e saldo
+  // (o PDF e o Excel do banco escrevem a descrição e a data de movimento de forma diferente).
+  const sameMove = r => `${Number(r.valor).toFixed(2)}|${Number(r.saldo).toFixed(2)}`
+  const hashes = useMemo(() => new Set([...existing.map(t => t.import_hash), ...existing.filter(t => t.saldo != null).map(sameMove)]), [existing])
+  const creditHashes = useMemo(() => new Set([...bank_credits.map(c => c.import_hash), ...bank_credits.filter(c => c.saldo != null).map(sameMove)]), [bank_credits])
+  const known = (set, r) => set.has(r.import_hash) || (r.saldo != null && set.has(sameMove(r)))
 
   async function read(f) {
     setFile(f)
     setParsed(null)
     let matrix
-    if (f.name.toLowerCase().endsWith('.csv')) matrix = parseCsvText(await f.text())
-    else matrix = (await XLSXLoader.readWorkbook(f))[0]?.matrix || []
+    let saldos = null
+    const name = f.name.toLowerCase()
+    try {
+      if (name.endsWith('.csv')) matrix = parseCsvText(await f.text())
+      else if (name.endsWith('.pdf') || f.type === 'application/pdf') {
+        const { pdfTextItems } = await import('../lib/pdfLoader')
+        matrix = statementMatrix(await pdfTextItems(await f.arrayBuffer()))
+        saldos = checkBalances(matrix, parseMoney)
+      } else matrix = (await XLSXLoader.readWorkbook(f))[0]?.matrix || []
+    } catch (e) {
+      return setParsed({ records: [], credits: [], ignored: 0, error: `Não foi possível ler o ficheiro: ${e.message}` })
+    }
     const res = parseBankStatement(matrix)
-    const records = res.records.map(r => ({ ...r, ...suggestClassification(r, existing), duplicado: hashes.has(r.import_hash) }))
+    if (saldos && !res.error && !res.records.length && !res.credits.length) res.error = 'Não encontrei movimentos neste PDF. Se for um PDF digitalizado (imagem), exporta o extrato em Excel no Caixadirecta.'
+    res.saldos = saldos
+    const records = res.records.map(r => ({ ...r, ...suggestClassification(r, existing), duplicado: known(hashes, r) }))
     // Entradas: liga às transferências já registadas à mão; as de hóspedes vão por omissão para a receção.
     const taken = new Set()
     const credits = res.credits.map(c => {
-      const duplicado = creditHashes.has(c.import_hash)
+      const duplicado = known(creditHashes, c)
       const match = duplicado ? null : matchTransfer(c, transferencias, taken)
       if (match) taken.add(match.id)
       return { ...c, duplicado, transferencia: match, rececao: !match && goesToReception(c.tipo) }
@@ -127,12 +144,15 @@ function BankImportModal({ onClose, existing, categoriesById, propertiesById, on
   const total = novos.length + (creditsReady ? novasEntradas.length : 0)
   return (
     <Modal title="Importar extrato CGD" onClose={onClose} wide>
-      <p className="muted">Exporta o extrato no Caixadirecta em Excel ou CSV. As saídas (débitos) entram como despesas; as entradas (créditos: Expedia, Stripe, transferências de hóspedes…) entram como recebimentos, à parte. Movimentos que já existem são ignorados. A categoria e o imóvel das saídas são sugeridos a partir de movimentos anteriores com a mesma descrição.</p>
-      <label className="file-button"><input type="file" accept=".xlsx,.xls,.csv" onChange={e => e.target.files[0] && read(e.target.files[0])} />{file ? file.name : 'Escolher ficheiro do extrato'}</label>
+      <p className="muted">Escolhe o extrato da CGD em PDF, Excel ou CSV. As saídas (débitos) entram como despesas; as entradas (créditos: Expedia, Stripe, transferências de hóspedes…) entram como recebimentos, à parte. Movimentos que já existem são ignorados. A categoria e o imóvel das saídas são sugeridos a partir de movimentos anteriores com a mesma descrição.</p>
+      <label className="file-button"><input type="file" accept=".pdf,.xlsx,.xls,.csv" onChange={e => e.target.files[0] && read(e.target.files[0])} />{file ? file.name : 'Escolher ficheiro do extrato'}</label>
       {parsed?.error && <div className="notice bad">{parsed.error}</div>}
       {parsed && !parsed.error && (
         <>
           <div className="notice">{parsed.records.length} saídas ({novos.length} novas) · {parsed.credits.length} entradas ({novasEntradas.length} novas){parsed.ignored ? ` · ${parsed.ignored} linhas sem valor ignoradas` : ''}</div>
+          {parsed.saldos && (parsed.saldos.erradas
+            ? <div className="notice bad">Atenção: em {parsed.saldos.erradas} linha(s) o saldo não bate certo com o movimento. Confirma os valores abaixo antes de importar ou usa o Excel do Caixadirecta.</div>
+            : parsed.saldos.verificadas > 0 && <div className="notice ok">✓ Leitura do PDF confirmada pelos saldos ({parsed.saldos.verificadas} movimentos conferidos).</div>)}
           <div className="subhead">Saídas</div>
           <div className="tablewrap"><table className="mini-table"><thead><tr><th>Data</th><th>Descrição</th><th>Categoria sugerida</th><th>Imóvel</th><th className="money">Valor</th><th>Estado</th></tr></thead>
             <tbody>{parsed.records.length ? parsed.records.map(r => (

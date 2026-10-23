@@ -291,3 +291,4 @@ td.wrap{white-space:normal;min-width:180px}
 .rececao .trf-actions .secondary{padding:11px 14px;border:1px solid #d9dde7;border-radius:11px;background:#fff;font:inherit;cursor:pointer}
 .check-inline input{width:auto;margin:0}
 .check-inline,.modal label.check-inline{display:flex;gap:6px;align-items:center;font-size:13px;font-weight:600;white-space:nowrap}
+.modal label.check-inline{flex-direction:row}
