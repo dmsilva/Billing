@@ -74,6 +74,8 @@ describe('regras de fornecedores', () => {
     expect(ruleCategory('TRF MARIO MENDES')).toBe('Manutenção / bricolage')
     expect(ruleCategory('GASTOS MES 6709416287')).toBe('Gastos do mês')
     expect(ruleCategory('PROC RECLAM 99881')).toBe('Devoluções a clientes (Booking)')
+    expect(ruleCategory('COMPRA 441 DUQUE DE AVILA 0000833311')).toBe('Supermercado — Pingo Doce')
+    expect(ruleCategory('441 DUQUE AVILA')).toBe('Supermercado — Pingo Doce')
     expect(ruleCategory('PAD PORT D D AVILA')).toBeNull()
     expect(ruleCategory('INSTITUTO')).toBeNull()
   })
