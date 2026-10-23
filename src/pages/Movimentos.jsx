@@ -4,7 +4,7 @@ import * as XLSXLoader from '../lib/xlsxLoader'
 import { useData } from '../data/DataProvider'
 import { useFilters } from '../data/FiltersProvider'
 import FilterBar from '../components/FilterBar'
-import { Badge, Empty, Kpi, Modal, Panel, PaymentBadge, useToast } from '../components/ui'
+import { Empty, Kpi, Modal, Panel, PaymentBadge, useToast } from '../components/ui'
 import { applyFilters, PAYMENT_CGD } from '../lib/finance'
 import { euro, parseMoney, sumBy } from '../lib/money'
 import { formatDate, formatDateTime } from '../lib/dates'
@@ -13,13 +13,22 @@ import { CREDIT_TYPES, goesToReception, guessPayer, matchTransfer, parseBankStat
 import { parseCsvText } from '../lib/cashImport'
 import { checkBalances, statementMatrix } from '../lib/pdfStatement'
 import { supabase } from '../supabase'
+import CategorySelect from '../components/CategorySelect'
 
 export default function Movimentos() {
-  const { bankRows, bank_transactions, bank_imports, categoriesById, propertiesById, reload } = useData()
+  const { bankRows, bank_transactions, bank_imports, categoriesById, propertiesById, reload, upsertLocal } = useData()
   const { filters } = useFilters()
+  const toast = useToast()
   const [importing, setImporting] = useState(false)
   const rows = useMemo(() => applyFilters(bankRows, { ...filters, payment: '' }).sort((a, b) => String(a.data).localeCompare(String(b.data)) || a.id - b.id), [bankRows, filters])
   const expense = rows.filter(r => r.contaComoDespesa)
+
+  async function setCategory(r, categoria_id) {
+    const { data, error } = await supabase.from('bank_transactions').update({ categoria_id }).eq('id', r.id).select().single()
+    if (error) return toast(`Não foi possível guardar: ${error.message}`, 'bad')
+    upsertLocal('bank_transactions', data)
+    toast(`Categoria alterada para ${categoriesById.get(categoria_id)?.nome || 'Por classificar'}.`)
+  }
 
   const exportCsv = () => downloadText(toCsv(
     ['Data', 'Data valor', 'Descrição', 'Categoria', 'Imóvel', 'Pagamento', 'Valor', 'Saldo', 'Conta como despesa'],
@@ -33,7 +42,7 @@ export default function Movimentos() {
         <Kpi color="blue" icon="▤" label="Movimentos" value={rows.length} note={<>Saídas da conta CGD · <Link to="/entradas">ver entradas</Link></>} />
         <Kpi color="purple" icon="€" label="Despesas CGD" value={euro(sumBy(expense, r => r.valor))} note="Contam para a contabilidade" />
         <Kpi color="orange" icon="⇄" label="Fora das despesas" value={euro(sumBy(rows.filter(r => !r.contaComoDespesa), r => r.valor))} note="Ex.: transferências entre empresas" />
-        <Kpi color="green" icon="?" label="Por classificar" value={rows.filter(r => ['Por classificar', 'Outros / por classificar'].includes(r.categoria)).length} note="Classifica em Editar categorias" />
+        <Kpi color="green" icon="?" label="Por classificar" value={rows.filter(r => ['Por classificar', 'Outros / por classificar'].includes(r.categoria)).length} note="Altera a categoria diretamente na tabela" />
       </div>
       <Panel title="Saídas da conta CGD" hint="Todos os movimentos do extrato bancário são tratados como pagamentos pela CGD. Aqui não entram as despesas em numerário.">
         <div className="tablewrap tall">
@@ -44,7 +53,7 @@ export default function Movimentos() {
                 <tr key={r.id} className={r.contaComoDespesa ? '' : 'row-muted'}>
                   <td>{formatDate(r.data)}</td>
                   <td>{r.descricao}{r.source.notas && <div className="muted small">{r.source.notas}</div>}</td>
-                  <td><Badge>{r.categoria}</Badge>{!r.contaComoDespesa && <div className="muted small">não conta como despesa</div>}</td>
+                  <td><CategorySelect value={r.source.categoria_id} onChange={v => setCategory(r, v)} aria-label={`Categoria de ${r.descricao}`} />{!r.contaComoDespesa && <div className="muted small">não conta como despesa</div>}</td>
                   <td>{r.imovel}</td>
                   <td><PaymentBadge value={PAYMENT_CGD} /></td>
                   <td className="money">{euro(r.valor)}</td>

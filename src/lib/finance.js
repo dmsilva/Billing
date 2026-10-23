@@ -13,7 +13,7 @@
 //  - "Entradas no banco" = créditos do extrato CGD (Expedia, Stripe, transferências de hóspedes…).
 //    Nunca são despesa; as marcadas com conta_como_entrada=false (ex.: entre contas próprias) ficam fora.
 import { sum, sumBy, sameAmount } from './money.js'
-import { monthOf } from './dates.js'
+import { monthOf, monthsOfYear } from './dates.js'
 
 export const PAYMENT_CGD = 'CGD'
 export const PAYMENT_CASH = 'Numerário'
@@ -293,4 +293,69 @@ export function lineMonth(line, invoicesById) {
   const d = line.data || invoicesById?.get(line.invoice_id)?.data
   if (d) return monthOf(d)
   return line.legacy_idx != null ? LEGACY_ITEMS_MONTH : ''
+}
+
+// ---------- Resultados (faturado − despesas) ----------
+//
+// Faturado = tudo o que a receção registou na caixa diária (dinheiro, CV, MB, City MB)
+//          + entradas no banco que não passam pela caixa (Expedia, Booking, Airbnb, Stripe,
+//            transferências de hóspedes, outras).
+// Ficam fora do faturado, para não contar o mesmo dinheiro duas vezes:
+//  - "TPA / Multibanco": é o dinheiro dos cartões da caixa (MB/CV) a chegar ao banco;
+//  - "Depósito": é o numerário da caixa depositado no banco;
+//  - entradas com conta_como_entrada=false (ex.: entre contas próprias).
+// Despesas = saídas CGD que contam como despesa + faturas pagas em numerário (accountingRows).
+export const CREDIT_FROM_CASH = new Set(['TPA / Multibanco', 'Depósito'])
+export const creditCountsAsRevenue = c => c.conta_como_entrada !== false && !CREDIT_FROM_CASH.has(c.tipo)
+export const isSalaryRow = r => supplierKey(r).grupo === 'Salários'
+
+export function monthResult(month, { closes, credits, expenseRows }) {
+  const cx = cashEntries(closes.filter(c => monthOf(c.data) === month))
+  const cr = credits.filter(c => monthOf(c.data_mov) === month)
+  const bancoList = cr.filter(creditCountsAsRevenue)
+  const banco = sumBy(bancoList, c => c.valor)
+  const porTipo = new Map()
+  for (const c of bancoList) porTipo.set(c.tipo || 'Outra', [...(porTipo.get(c.tipo || 'Outra') || []), c.valor])
+  const ex = expenseRows.filter(r => monthOf(r.data) === month)
+  const t = totals(ex)
+  const salarios = sumBy(ex.filter(isSalaryRow), r => r.valor)
+  const faturado = sum([cx.total, banco])
+  return {
+    month,
+    caixa: { dinheiro: cx.dinheiro, cartoes: sum([cx.mb, cx.cityMb]), cv: cx.cv, total: cx.total, dias: cx.dias },
+    banco,
+    bancoPorTipo: [...porTipo].map(([tipo, vs]) => ({ tipo, total: sum(vs) })).sort((a, b) => b.total - a.total),
+    foraDoFaturado: sumBy(cr.filter(c => !creditCountsAsRevenue(c)), c => c.valor),
+    faturado,
+    despesas: t.total,
+    despesasCgd: t.cgd,
+    despesasNumerario: t.numerario,
+    salarios,
+    resultado: sum([faturado, -t.total]),
+    // Avisos de dados em falta (o resultado do mês pode estar incompleto).
+    semCaixa: cx.dias === 0,
+    semEntradasBanco: cr.length === 0,
+    semSaidas: ex.filter(r => r.kind === 'bank').length === 0,
+    // Só há resultado quando o mês tem caixa diária e extrato de saídas; sem um dos lados o
+    // "lucro" seria só o faturado (ou só despesas) e enganava.
+    completo: cx.dias > 0 && ex.some(r => r.kind === 'bank'),
+  }
+}
+
+export function yearResults(year, data) {
+  const months = monthsOfYear(year).map(m => monthResult(m, data))
+  const comDados = months.filter(m => m.faturado || m.despesas)
+  const completos = comDados.filter(m => m.completo)
+  const total = key => sum(completos.map(m => m[key]))
+  return {
+    months,
+    comDados,
+    completos,
+    incompletos: comDados.filter(m => !m.completo),
+    faturado: total('faturado'),
+    despesas: total('despesas'),
+    salarios: total('salarios'),
+    resultado: total('resultado'),
+    mesesComPrejuizo: completos.filter(m => m.resultado < 0).map(m => m.month),
+  }
 }

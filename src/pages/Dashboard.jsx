@@ -6,7 +6,7 @@ import { useFinance } from '../data/useFinance'
 import { useFilters } from '../data/FiltersProvider'
 import FilterBar, { useMonthOptions } from '../components/FilterBar'
 import { Kpi, Panel, RankBars, Select, StateBadge } from '../components/ui'
-import { attentionCounts, bankCredits, breakfastAnalysis, byCategory, byMonth, byProperty, bySupplier, cashEntries, cashCloseTotal, lineMonth, totals } from '../lib/finance'
+import { attentionCounts, bankCredits, breakfastAnalysis, byCategory, byMonth, byProperty, bySupplier, cashEntries, cashCloseTotal, lineMonth, monthResult, totals } from '../lib/finance'
 import { euro, sum } from '../lib/money'
 import { formatDate, monthLabel, monthOf, monthShort, monthsOfYear } from '../lib/dates'
 
@@ -25,6 +25,14 @@ export default function Dashboard() {
   const t = totals(rows)
   const entries = cashEntries(closes)
   const credits = bankCredits(bank_credits, filters.month)
+  // Resultado do período (só o filtro de mês; imóvel e categoria não se aplicam ao faturado).
+  const result = useMemo(() => {
+    const months = filters.month ? [filters.month] : monthOptions.map(m => m.value)
+    const all12 = months.map(m => monthResult(m, { closes: cash_closes, credits: bank_credits, expenseRows: all }))
+    // Sem um mês escolhido, só os meses com caixa e extrato (os outros dariam um lucro falso).
+    const list = filters.month ? all12 : all12.filter(m => m.completo)
+    return { faturado: sum(list.map(m => m.faturado)), despesas: sum(list.map(m => m.despesas)), resultado: sum(list.map(m => m.resultado)), completo: list.length > 0 && list.every(m => m.completo), meses: list.length }
+  }, [filters.month, monthOptions, cash_closes, bank_credits, all])
 
   const monthly = useMemo(() => {
     const months = monthsOfYear(year)
@@ -68,11 +76,17 @@ export default function Dashboard() {
 
       <FilterBar />
 
+      <div className="dash-kpis result-kpis">
+        <Kpi color="green" icon="↗" label="Faturado" value={euro(result.faturado)} note={filters.month ? 'Caixa diária + entradas no banco' : `Meses com caixa e extrato (${result.meses})`} />
+        <Kpi color="orange" icon="↘" label="Despesas" value={euro(result.despesas)} note="Saídas CGD + pagamentos em numerário" />
+        <Kpi color={result.resultado < 0 ? 'red' : 'blue'} icon="=" label={result.resultado < 0 ? 'Prejuízo' : 'Lucro'} value={euro(result.resultado)} note={<>{!result.completo && <>Faltam dados deste período · </>}<Link to="/resultados">Ver mês a mês e o ano →</Link></>} />
+      </div>
+
       <div className="dash-kpis">
         <Kpi color="blue" icon="€" label="Despesas CGD" value={euro(t.cgd)} note="Saídas da conta bancária" />
-        <Kpi color="green" icon="€" label="Numerário" value={euro(t.numerario)} note="Despesa contabilística" />
+        <Kpi color="green" icon="€" label="Despesas em numerário" value={euro(t.numerario)} note="Faturas pagas em dinheiro" />
         <Kpi color="purple" icon="Σ" label="Total contabilístico" value={euro(t.total)} note="CGD + numerário" />
-        <Kpi color="orange" icon="↗" label="Entradas de caixa" value={euro(entries.total)} note="Caixa diária" />
+        <Kpi color="orange" icon="↗" label="Entradas de caixa" value={euro(entries.total)} note={`Recebido em numerário: ${euro(entries.dinheiro)}`} />
         <Kpi color="green" icon="↘" label="Entradas no banco" value={euro(credits.total)} note="Expedia, Stripe, transferências" />
       </div>
 
