@@ -23,7 +23,14 @@ export default function Movimentos() {
   const { filters } = useFilters()
   const toast = useToast()
   const [importing, setImporting] = useState(false)
+  const [q, setQ] = useState('')
   const rows = useMemo(() => applyFilters(bankRows, { ...filters, payment: '' }).sort((a, b) => String(a.data).localeCompare(String(b.data)) || a.id - b.id), [bankRows, filters])
+  // Pesquisa na tabela: descrição, categoria, imóvel, valor (ex.: 12,30 ou 12.30) ou data (ex.: 03/07).
+  const shown = useMemo(() => {
+    const t = q.trim().toLowerCase()
+    if (!t) return rows
+    return rows.filter(r => `${r.descricao} ${r.categoria} ${r.imovel} ${Number(r.valor).toFixed(2)} ${Number(r.valor).toFixed(2).replace('.', ',')} ${formatDate(r.data)} ${r.source.notas || ''}`.toLowerCase().includes(t))
+  }, [rows, q])
   const expense = rows.filter(r => r.contaComoDespesa)
 
   // Movimentos com fatura ou pagamento ligado não se apagam (ficam como o original).
@@ -55,11 +62,15 @@ export default function Movimentos() {
       <DuplicatesPanel table="bank_transactions" title="Saídas repetidas" rows={bank_transactions} score={dupScore} detail={catName}
         locked={t => (linkedIds.has(t.id) ? 'Tem uma fatura ligada: confirma à mão' : null)} />
       <Panel title="Saídas da conta CGD" hint="Todos os movimentos do extrato bancário são tratados como pagamentos pela CGD. Aqui não entram as despesas em numerário.">
+        <div className="filters flat">
+          <input className="search" type="search" value={q} onChange={e => setQ(e.target.value)} placeholder="Pesquisar descrição, categoria, valor (ex.: 12,30) ou data (ex.: 03/07)…" aria-label="Pesquisar saídas" />
+          {q.trim() && <span className="muted small">{shown.length} de {rows.length} movimentos</span>}
+        </div>
         <div className="tablewrap tall">
           <table>
             <thead><tr><th>Data</th><th>Descrição</th><th>Categoria</th><th>Imóvel</th><th>Pagamento</th><th className="money">Valor</th><th className="money">Saldo</th></tr></thead>
             <tbody>
-              {rows.length ? rows.map(r => (
+              {shown.length ? shown.map(r => (
                 <tr key={r.id} className={r.contaComoDespesa ? '' : 'row-muted'}>
                   <td>{formatDate(r.data)}</td>
                   <td>{r.descricao}{r.source.notas && <div className="muted small">{r.source.notas}</div>}</td>
@@ -69,7 +80,7 @@ export default function Movimentos() {
                   <td className="money">{euro(r.valor)}</td>
                   <td className="money">{r.saldo == null ? '—' : euro(r.saldo)}</td>
                 </tr>
-              )) : <Empty colSpan={7}>Sem movimentos para os filtros selecionados.</Empty>}
+              )) : <Empty colSpan={7}>{q.trim() ? "Nenhuma saída encontrada para esta pesquisa." : "Sem movimentos para os filtros selecionados."}</Empty>}
             </tbody>
           </table>
         </div>
