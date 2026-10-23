@@ -60,3 +60,11 @@ describe('resultado do ano', () => {
     expect(y2.resultado).toBe(-2889.6)
   })
 })
+
+describe('encargos com pessoal', () => {
+  it('custo com pessoal = salários + TSU + IRS, sem mexer nas despesas', () => {
+    const m = monthResult('2026-09', { ...data, encargos: [{ mes: '2026-09', tsu: 230.5, irs: 100 }] })
+    expect(m.pessoal).toBe(1330.5)
+    expect(m.despesas).toBe(1250.1)
+  })
+})

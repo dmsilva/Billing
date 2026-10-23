@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { useData } from '../data/DataProvider'
 import { useFilters } from '../data/FiltersProvider'
 import { useMonthOptions } from '../components/FilterBar'
@@ -10,10 +10,13 @@ import { formatDate, monthLabel, monthOf, todayIso } from '../lib/dates'
 import { decimalPt, downloadText, toCsv } from '../lib/csv'
 import { supabase } from '../supabase'
 import { matchesTransfer } from '../lib/transfers'
+import DuplicatesPanel from '../components/DuplicatesPanel'
 
 // Entradas da conta CGD (créditos do extrato) e transferências partilhadas com a receção.
 export default function Entradas() {
   const { bank_credits, transferencias, properties, propertiesById, creditsReady, upsertLocal, removeLocal, reload } = useData()
+  const linkedCredits = useMemo(() => new Set(transferencias.map(t => t.bank_credit_id).filter(Boolean)), [transferencias])
+  const creditScore = useCallback(c => (linkedCredits.has(c.id) ? 8 : 0) + (c.tipo && c.tipo !== 'Outra' ? 1 : 0), [linkedCredits])
   const { filters, set } = useFilters()
   const toast = useToast()
   const months = useMonthOptions()
@@ -102,6 +105,8 @@ export default function Entradas() {
         </div>
       </Panel>
 
+      <DuplicatesPanel table="bank_credits" title="Entradas repetidas" rows={bank_credits} score={creditScore} detail={c => c.tipo}
+        locked={c => (linkedCredits.has(c.id) ? 'Está na lista da receção: apaga primeiro a transferência' : null)} />
       <Panel title="Entradas da conta CGD" hint="Créditos do extrato, importados em CGD / Extrato. Contam como entradas, nunca como despesa. Desmarca “Conta” nos que não são receita (por exemplo, dinheiro entre contas próprias).">
         <div className="filters flat"><input className="search" value={qc} onChange={e => setQc(e.target.value)} placeholder="Pesquisar descrição, origem ou valor…" /></div>
         <div className="tablewrap tall">

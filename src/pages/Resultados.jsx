@@ -3,7 +3,9 @@ import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAx
 import { useFinance } from '../data/useFinance'
 import { useFilters } from '../data/FiltersProvider'
 import { useMonthOptions } from '../components/FilterBar'
-import { Kpi, Panel, Select } from '../components/ui'
+import { Kpi, Panel, Select, useToast } from '../components/ui'
+import { useData } from '../data/DataProvider'
+import { supabase } from '../supabase'
 import { yearResults } from '../lib/finance'
 import { euro, parseMoney, sum } from '../lib/money'
 import { monthLabel, monthShort } from '../lib/dates'
@@ -13,14 +15,14 @@ const tone = v => (v < 0 ? 'negative' : 'positive')
 
 // Resultados: quanto faturámos, quanto gastámos e o que sobra, mês a mês e no ano.
 export default function Resultados() {
-  const { all, cash_closes, bank_credits } = useFinance()
+  const { all, cash_closes, bank_credits, encargos_pessoal, encargosReady } = useFinance()
   const { filters } = useFilters()
   const monthOptions = useMonthOptions()
   const years = useMemo(() => [...new Set(monthOptions.map(m => m.value.slice(0, 4)))].sort(), [monthOptions])
   const [year, setYear] = useState((filters.month || monthOptions.at(-1)?.value || String(new Date().getFullYear())).slice(0, 4))
   const [open, setOpen] = useState(null)
   const [bonusText, setBonusText] = useState('')
-  const y = useMemo(() => yearResults(year, { closes: cash_closes, credits: bank_credits, expenseRows: all }), [year, cash_closes, bank_credits, all])
+  const y = useMemo(() => yearResults(year, { closes: cash_closes, credits: bank_credits, expenseRows: all, encargos: encargos_pessoal }), [year, cash_closes, bank_credits, all, encargos_pessoal])
   const chart = y.months.map(m => ({ ...m, label: monthShort(m.month) }))
   const bonus = parseMoney(bonusText) || 0
   const depoisBonus = sum([y.resultado, -bonus])
@@ -86,11 +88,13 @@ export default function Resultados() {
         <div className="hint">Clica num mês para ver o detalhe.</div>
       </Panel>
 
+      <EncargosPanel months={y.comDados} ready={encargosReady} />
+
       <div className="twocol">
         <Panel title="Bónus de fim de ano" hint="Simula quanto podes pagar sem ficar em prejuízo.">
           <div className="bonus-grid">
             <div><span>Resultado do ano até agora</span><strong className={tone(y.resultado)}>{euro(y.resultado)}</strong></div>
-            <div><span>Salários pagos no ano</span><strong>{euro(y.salarios)}</strong></div>
+            <div><span>Custo com pessoal no ano</span><strong>{euro(y.pessoal)}</strong><small className="muted">Salários {euro(y.salarios)} + TSU e IRS {euro(sum([y.pessoal, -y.salarios]))}</small></div>
             <label><span>Bónus a pagar</span><input inputMode="decimal" value={bonusText} onChange={e => setBonusText(e.target.value)} placeholder="Ex.: 3000" /></label>
             <div><span>Resultado depois do bónus</span><strong className={tone(depoisBonus)}>{euro(depoisBonus)}</strong></div>
           </div>
@@ -98,7 +102,7 @@ export default function Resultados() {
             {y.resultado <= 0
               ? 'Neste momento o ano está em prejuízo: um bónus aumentaria o prejuízo.'
               : bonus > 0
-                ? `O bónus representa ${Math.round((bonus / y.resultado) * 100)}% do lucro${y.salarios ? ` e ${Math.round((bonus / y.salarios) * 100)}% dos salários do ano` : ''}.`
+                ? `O bónus representa ${Math.round((bonus / y.resultado) * 100)}% do lucro${y.pessoal ? ` e ${Math.round((bonus / y.pessoal) * 100)}% do custo com pessoal do ano` : ''}.`
                 : 'Escreve um valor para ver como fica o resultado.'}
             {' '}Conta só com os meses já registados.
           </div>
@@ -146,6 +150,8 @@ function MonthRows({ m, open, onToggle }) {
               <Line label="Saídas CGD" v={m.despesasCgd} />
               <Line label="Pagas em numerário" v={m.despesasNumerario} />
               <Line label="das quais salários" v={m.salarios} />
+              <div className="subhead">Custo com pessoal</div>
+              <Line label="Salários + TSU + IRS" v={m.pessoal} />
             </div>
           </div>
         </td></tr>
@@ -155,3 +161,45 @@ function MonthRows({ m, open, onToggle }) {
 }
 
 const Line = ({ label, v }) => <div className="result-line"><span>{label}</span><strong>{euro(v)}</strong></div>
+
+// TSU e IRS de cada mês (vêm no documento da contabilidade; já estão pagos dentro dos "Gastos do mês").
+function EncargosPanel({ months, ready }) {
+  const { encargos_pessoal, upsertLocal } = useData()
+  const toast = useToast()
+  const byMonth = new Map(encargos_pessoal.map(e => [e.mes, e]))
+
+  async function save(mes, field, text) {
+    const v = text.trim() === '' ? 0 : parseMoney(text)
+    if (v == null || v < 0) return toast('Valor inválido.', 'bad')
+    const cur = byMonth.get(mes)
+    if (Number(cur?.[field] || 0) === v) return
+    const { data, error } = await supabase.from('encargos_pessoal').upsert({ mes, tsu: cur?.tsu ?? 0, irs: cur?.irs ?? 0, [field]: v }, { onConflict: 'mes' }).select().single()
+    if (error) return toast(`Não foi possível guardar: ${error.message}`, 'bad')
+    upsertLocal('encargos_pessoal', data)
+    toast(`${field === 'tsu' ? 'TSU' : 'IRS'} de ${monthLabel(mes)} guardado.`)
+  }
+
+  return (
+    <Panel title="TSU e IRS dos funcionários" hint="Copia os valores do documento mensal da contabilidade. Já estão pagos dentro dos “Gastos do mês”, por isso não somam às despesas: servem para saber o custo real com o pessoal.">
+      {!ready ? <div className="notice warn">Para guardar a TSU e o IRS, executa uma vez o ficheiro supabase/07_encargos_pessoal.sql no Supabase.</div> : (
+        <div className="tablewrap">
+          <table className="mini-table">
+            <thead><tr><th>Mês</th><th className="money">Salários (extrato)</th><th className="money">TSU</th><th className="money">IRS</th><th className="money">Custo com pessoal</th></tr></thead>
+            <tbody>{months.length ? months.map(m => (
+              <tr key={m.month}>
+                <td>{monthLabel(m.month)}</td>
+                <td className="money">{euro(m.salarios)}</td>
+                {['tsu', 'irs'].map(f => (
+                  <td className="money" key={f}><input key={`${m.month}-${f}-${byMonth.get(m.month)?.[f] ?? ''}`} className="money-input" inputMode="decimal" aria-label={`${f.toUpperCase()} de ${monthLabel(m.month)}`}
+                    defaultValue={byMonth.get(m.month)?.[f] ? Number(byMonth.get(m.month)[f]).toFixed(2).replace('.', ',') : ''} placeholder="0,00"
+                    onBlur={e => save(m.month, f, e.target.value)} onKeyDown={e => e.key === 'Enter' && e.currentTarget.blur()} /></td>
+                ))}
+                <td className="money"><strong>{euro(m.pessoal)}</strong></td>
+              </tr>
+            )) : <tr><td colSpan={5} className="emptybox">Sem meses com dados.</td></tr>}</tbody>
+          </table>
+        </div>
+      )}
+    </Panel>
+  )
+}

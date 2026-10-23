@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import * as XLSXLoader from '../lib/xlsxLoader'
 import { useData } from '../data/DataProvider'
@@ -14,14 +14,22 @@ import { parseCsvText } from '../lib/cashImport'
 import { checkBalances, statementMatrix } from '../lib/pdfStatement'
 import { supabase } from '../supabase'
 import CategorySelect from '../components/CategorySelect'
+import DuplicatesPanel from '../components/DuplicatesPanel'
+import { ensureCategories } from '../data/categories'
+import { UNCLASSIFIED } from '../lib/finance'
 
 export default function Movimentos() {
-  const { bankRows, bank_transactions, bank_imports, categoriesById, propertiesById, reload, upsertLocal } = useData()
+  const { bankRows, bank_transactions, bank_imports, categoriesById, propertiesById, reload, upsertLocal, invoices, invoice_payments } = useData()
   const { filters } = useFilters()
   const toast = useToast()
   const [importing, setImporting] = useState(false)
   const rows = useMemo(() => applyFilters(bankRows, { ...filters, payment: '' }).sort((a, b) => String(a.data).localeCompare(String(b.data)) || a.id - b.id), [bankRows, filters])
   const expense = rows.filter(r => r.contaComoDespesa)
+
+  // Movimentos com fatura ou pagamento ligado não se apagam (ficam como o original).
+  const linkedIds = useMemo(() => new Set([...invoices, ...(invoice_payments || [])].map(x => x.bank_transaction_id).filter(Boolean)), [invoices, invoice_payments])
+  const catName = t => categoriesById.get(t.categoria_id)?.nome || 'Por classificar'
+  const dupScore = useCallback(t => (linkedIds.has(t.id) ? 8 : 0) + (UNCLASSIFIED.includes(catName(t)) ? 0 : 4) + (t.imovel_id ? 2 : 0) + (t.origem === 'legado' ? 1 : 0), [linkedIds, categoriesById]) // eslint-disable-line react-hooks/exhaustive-deps
 
   async function setCategory(r, categoria_id) {
     const { data, error } = await supabase.from('bank_transactions').update({ categoria_id }).eq('id', r.id).select().single()
@@ -44,6 +52,8 @@ export default function Movimentos() {
         <Kpi color="orange" icon="⇄" label="Fora das despesas" value={euro(sumBy(rows.filter(r => !r.contaComoDespesa), r => r.valor))} note="Ex.: transferências entre empresas" />
         <Kpi color="green" icon="?" label="Por classificar" value={rows.filter(r => ['Por classificar', 'Outros / por classificar'].includes(r.categoria)).length} note="Altera a categoria diretamente na tabela" />
       </div>
+      <DuplicatesPanel table="bank_transactions" title="Saídas repetidas" rows={bank_transactions} score={dupScore} detail={catName}
+        locked={t => (linkedIds.has(t.id) ? 'Tem uma fatura ligada: confirma à mão' : null)} />
       <Panel title="Saídas da conta CGD" hint="Todos os movimentos do extrato bancário são tratados como pagamentos pela CGD. Aqui não entram as despesas em numerário.">
         <div className="tablewrap tall">
           <table>
@@ -78,7 +88,7 @@ export default function Movimentos() {
 
 function BankImportModal({ onClose, existing, categoriesById, propertiesById, onDone }) {
   const toast = useToast()
-  const { bank_credits, transferencias, creditsReady, reload } = useData()
+  const { bank_credits, transferencias, creditsReady, reload, categories, upsertLocal } = useData()
   const [file, setFile] = useState(null)
   const [parsed, setParsed] = useState(null)
   const [busy, setBusy] = useState(false)
@@ -108,7 +118,7 @@ function BankImportModal({ onClose, existing, categoriesById, propertiesById, on
     const res = parseBankStatement(matrix)
     if (saldos && !res.error && !res.records.length && !res.credits.length) res.error = 'Não encontrei movimentos neste PDF. Se for um PDF digitalizado (imagem), exporta o extrato em Excel no Caixadirecta.'
     res.saldos = saldos
-    const records = res.records.map(r => ({ ...r, ...suggestClassification(r, existing), duplicado: known(hashes, r) }))
+    const records = res.records.map(r => ({ ...r, ...suggestClassification(r, existing, categories), duplicado: known(hashes, r) }))
     // Entradas: liga às transferências já registadas à mão; as de hóspedes vão por omissão para a receção.
     const taken = new Set()
     const credits = res.credits.map(c => {
@@ -126,7 +136,9 @@ function BankImportModal({ onClose, existing, categoriesById, propertiesById, on
     setBusy(true)
     const msgs = []
     if (novos.length) {
-      const rows = novos.map(({ duplicado, ...r }) => r) // eslint-disable-line no-unused-vars
+      let idOf
+      try { idOf = await ensureCategories(novos.map(r => r.categoria_nova), categories, upsertLocal) } catch (e) { setBusy(false); return toast(e.message, 'bad') }
+      const rows = novos.map(({ duplicado, categoria_nova, ...r }) => ({ ...r, categoria_id: categoria_nova ? idOf(categoria_nova) : r.categoria_id })) // eslint-disable-line no-unused-vars
       const { data, error } = await supabase.rpc('import_bank_transactions', { p_rows: rows, p_file: file.name })
       if (error) { setBusy(false); return toast(`Não foi possível importar: ${error.message}`, 'bad') }
       msgs.push(`${data.novos} saídas novas`)
@@ -167,7 +179,7 @@ function BankImportModal({ onClose, existing, categoriesById, propertiesById, on
             <tbody>{parsed.records.length ? parsed.records.map(r => (
               <tr key={r.import_hash} className={r.duplicado ? 'row-muted' : ''}>
                 <td>{formatDate(r.data_mov)}</td><td>{r.descricao}</td>
-                <td>{categoriesById.get(r.categoria_id)?.nome || 'Por classificar'}</td>
+                <td>{r.categoria_nova ? `${r.categoria_nova} (nova)` : categoriesById.get(r.categoria_id)?.nome || 'Por classificar'}</td>
                 <td>{propertiesById.get(r.imovel_id) || '—'}</td>
                 <td className="money">{euro(r.valor)}</td><td>{r.duplicado ? 'Já existe' : 'Novo'}</td>
               </tr>

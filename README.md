@@ -111,7 +111,8 @@ O modo local nunca entra no build de produção.
    3. `supabase/03_seed_legacy.sql` (dados reais migrados; termina com uma verificação automática)
    4. `supabase/05_faturas_por_pagar.sql` (faturas por pagar e pagamentos agrupados)
    5. `supabase/06_entradas_transferencias.sql` (entradas do extrato e transferências da receção)
-   6. Opcional: `supabase/04_verificacao.sql` (só leitura, mostra os totais)
+   6. `supabase/07_encargos_pessoal.sql` (TSU e IRS mensais, para o custo com pessoal em Resultados)
+   7. Opcional: `supabase/04_verificacao.sql` (só leitura, mostra os totais)
 
    Os scripts podem ser executados mais do que uma vez sem duplicar dados.
 3. **Database → Publications → supabase_realtime**: confirmar que as tabelas da aplicação estão incluídas (o `01_schema.sql` já as adiciona). Isto mantém vários dispositivos sincronizados em tempo real.
