@@ -309,7 +309,8 @@ export const CREDIT_FROM_CASH = new Set(['TPA / Multibanco', 'Depósito'])
 export const creditCountsAsRevenue = c => c.conta_como_entrada !== false && !CREDIT_FROM_CASH.has(c.tipo)
 export const isSalaryRow = r => supplierKey(r).grupo === 'Salários'
 
-export function monthResult(month, { closes, credits, expenseRows }) {
+// encargos: [{ mes, tsu, irs }] (TSU e IRS pagos dentro dos "Gastos do mês"; não somam às despesas).
+export function monthResult(month, { closes, credits, expenseRows, encargos = [] }) {
   const cx = cashEntries(closes.filter(c => monthOf(c.data) === month))
   const cr = credits.filter(c => monthOf(c.data_mov) === month)
   const bancoList = cr.filter(creditCountsAsRevenue)
@@ -320,6 +321,9 @@ export function monthResult(month, { closes, credits, expenseRows }) {
   const t = totals(ex)
   const salarios = sumBy(ex.filter(isSalaryRow), r => r.valor)
   const faturado = sum([cx.total, banco])
+  const enc = encargos.find(e => e.mes === month)
+  const tsu = Number(enc?.tsu || 0)
+  const irs = Number(enc?.irs || 0)
   return {
     month,
     caixa: { dinheiro: cx.dinheiro, cartoes: sum([cx.mb, cx.cityMb]), cv: cx.cv, total: cx.total, dias: cx.dias },
@@ -331,6 +335,9 @@ export function monthResult(month, { closes, credits, expenseRows }) {
     despesasCgd: t.cgd,
     despesasNumerario: t.numerario,
     salarios,
+    tsu,
+    irs,
+    pessoal: sum([salarios, tsu, irs]),
     resultado: sum([faturado, -t.total]),
     // Avisos de dados em falta (o resultado do mês pode estar incompleto).
     semCaixa: cx.dias === 0,
@@ -355,6 +362,7 @@ export function yearResults(year, data) {
     faturado: total('faturado'),
     despesas: total('despesas'),
     salarios: total('salarios'),
+    pessoal: total('pessoal'),
     resultado: total('resultado'),
     mesesComPrejuizo: completos.filter(m => m.resultado < 0).map(m => m.month),
   }

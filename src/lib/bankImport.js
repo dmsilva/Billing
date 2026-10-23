@@ -108,11 +108,40 @@ export function matchTransfer(credit, transfers, taken = new Set()) {
 // Descrição sem números de referência, para reconhecer o mesmo fornecedor noutro mês.
 export const descriptionStem = d => String(d || '').toUpperCase().replace(/\d{4,}/g, '').replace(/\s+/g, ' ').trim()
 
-// Sugere categoria e imóvel a partir do movimento anterior mais recente com a mesma descrição.
-export function suggestClassification(record, previous) {
+// Fornecedores que a administração identificou (o texto do banco não diz o que são).
+// [expressão, categoria, explicação]
+export const SUPPLIER_RULES = [
+  [/\bGDL\s*CUR\b/, 'Gás', 'GDL CUR é o gás'],
+  [/CRISTINA\s+MARGARID/, 'Transferência — Cristina', 'TRF Cristina Margarida: fornecedor'],
+  [/MANUEL\s+J\.?\s*CABRAL/, 'Produtos de limpeza', 'Manuel J Cabral: produtos de limpeza'],
+  [/\bSTI\b/, 'Produtos de limpeza', 'STI: produtos de limpeza'],
+  [/M[AÁ]RIO\s+MENDES/, 'Manutenção / bricolage', 'Mário Mendes: chaves e material de construção'],
+  [/GASTOS\s+M[EÊ]S/, 'Gastos do mês', 'Contabilidade (inclui IRS e TSU mensais)'],
+  [/PROC\.?\s*RECLAM/, 'Devoluções a clientes (Booking)', 'Estornos a clientes da Booking'],
+]
+
+export function ruleCategory(descricao) {
+  const d = String(descricao || '').toUpperCase().normalize('NFC')
+  return SUPPLIER_RULES.find(([re]) => re.test(d))?.[1] || null
+}
+
+// Sugere categoria e imóvel: primeiro as regras de fornecedores, depois o movimento anterior
+// mais recente com a mesma descrição. categories (opcional) serve para traduzir o nome da regra;
+// se a categoria ainda não existe, devolve categoria_nova com o nome a criar.
+export function suggestClassification(record, previous, categories = []) {
+  const prev = previousMatch(record, previous)
+  const nome = ruleCategory(record.descricao)
+  if (nome) {
+    const cat = categories.find(c => c.nome.toLowerCase() === nome.toLowerCase())
+    return cat ? { categoria_id: cat.id, imovel_id: prev?.imovel_id ?? null } : { categoria_id: null, categoria_nova: nome, imovel_id: prev?.imovel_id ?? null }
+  }
+  return prev ? { categoria_id: prev.categoria_id, imovel_id: prev.imovel_id } : { categoria_id: null, imovel_id: null }
+}
+
+function previousMatch(record, previous) {
   const stem = descriptionStem(record.descricao)
   const match = [...previous]
     .filter(t => descriptionStem(t.descricao) === stem)
     .sort((a, b) => String(b.data_mov).localeCompare(String(a.data_mov)))[0]
-  return match ? { categoria_id: match.categoria_id, imovel_id: match.imovel_id } : { categoria_id: null, imovel_id: null }
+  return match || null
 }

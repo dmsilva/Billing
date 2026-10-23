@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { legacy } from './helpers.js'
-import { bankHash, classifyCredit, descriptionStem, goesToReception, guessPayer, matchTransfer, parseBankStatement, suggestClassification } from '../src/lib/bankImport.js'
+import { bankHash, classifyCredit, descriptionStem, goesToReception, guessPayer, matchTransfer, parseBankStatement, ruleCategory, suggestClassification } from '../src/lib/bankImport.js'
 
 describe('extrato CGD', () => {
   const matrix = [
@@ -61,5 +61,25 @@ describe('extrato CGD', () => {
     const prev = [{ descricao: 'PAD PORT D D AVILA 0000833311', data_mov: '2026-07-01', categoria_id: 7, imovel_id: 1 }]
     expect(suggestClassification({ descricao: 'PAD PORT D D AVILA 0000912345' }, prev)).toEqual({ categoria_id: 7, imovel_id: 1 })
     expect(suggestClassification({ descricao: 'NOVO' }, prev)).toEqual({ categoria_id: null, imovel_id: null })
+  })
+})
+
+describe('regras de fornecedores', () => {
+  const cats = [{ id: 40, nome: 'Gás' }, { id: 41, nome: 'Manutenção / bricolage' }]
+  it('reconhece os fornecedores indicados pela administração', () => {
+    expect(ruleCategory('DD GDL CUR 12345678')).toBe('Gás')
+    expect(ruleCategory('TRF CRISTINA MARGARID')).toBe('Transferência — Cristina')
+    expect(ruleCategory('TRF MANUEL J CABRAL LDA')).toBe('Produtos de limpeza')
+    expect(ruleCategory('COMPRA STI 4433')).toBe('Produtos de limpeza')
+    expect(ruleCategory('TRF MARIO MENDES')).toBe('Manutenção / bricolage')
+    expect(ruleCategory('GASTOS MES 6709416287')).toBe('Gastos do mês')
+    expect(ruleCategory('PROC RECLAM 99881')).toBe('Devoluções a clientes (Booking)')
+    expect(ruleCategory('PAD PORT D D AVILA')).toBeNull()
+    expect(ruleCategory('INSTITUTO')).toBeNull()
+  })
+  it('a regra ganha ao movimento anterior e indica a categoria a criar', () => {
+    const prev = [{ descricao: 'DD GDL CUR 10001', data_mov: '2026-07-01', categoria_id: 99, imovel_id: 2 }]
+    expect(suggestClassification({ descricao: 'DD GDL CUR 10002' }, prev, cats)).toEqual({ categoria_id: 40, imovel_id: 2 })
+    expect(suggestClassification({ descricao: 'PROC RECLAM 1' }, [], cats)).toEqual({ categoria_id: null, categoria_nova: 'Devoluções a clientes (Booking)', imovel_id: null })
   })
 })

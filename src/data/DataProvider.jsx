@@ -23,6 +23,8 @@ const TABLES = {
   // Só existem depois de executar supabase/06_entradas_transferencias.sql.
   bank_credits: { select: '*', order: 'data_mov', optional: true },
   transferencias: { select: '*', order: 'data', optional: true },
+  // Só existe depois de executar supabase/07_encargos_pessoal.sql.
+  encargos_pessoal: { select: '*', order: 'mes', optional: true },
 }
 
 const PAGE = 1000
@@ -121,7 +123,7 @@ export function DataProvider({ children }) {
     }
   }, [state])
 
-  const value = { ...state, ...derived, paymentsReady: !missing.includes('invoice_payments'), creditsReady: !missing.includes('bank_credits') && !missing.includes('transferencias'), loading, error, online, reload, reloadAll, upsertLocal, removeLocal }
+  const value = { ...state, ...derived, paymentsReady: !missing.includes('invoice_payments'), creditsReady: !missing.includes('bank_credits') && !missing.includes('transferencias'), encargosReady: !missing.includes('encargos_pessoal'), loading, error, online, reload, reloadAll, upsertLocal, removeLocal }
   return <DataContext.Provider value={value}>{children}</DataContext.Provider>
 }
 

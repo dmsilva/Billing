@@ -5,6 +5,8 @@ import { supabase } from '../supabase'
 import CategorySelect from '../components/CategorySelect'
 import { Badge, ConfirmButton, Empty, Panel, Select, useToast } from '../components/ui'
 import { UNCLASSIFIED } from '../lib/finance'
+import { SUPPLIER_RULES } from '../lib/bankImport'
+import { ensureCategories } from '../data/categories'
 import { formatDate } from '../lib/dates'
 import { euro } from '../lib/money'
 import { downloadText } from '../lib/csv'
@@ -44,6 +46,27 @@ export default function EditarCategorias() {
     const { data, error } = await supabase.from('categories').update({ conta_como_despesa: !c.conta_como_despesa }).eq('id', c.id).select().single()
     if (error) return toast(error.message, 'bad')
     upsertLocal('categories', data)
+  }
+
+  // Regras de fornecedores: quantos movimentos apanham e quantos estão por classificar.
+  const ruleStats = useMemo(() => SUPPLIER_RULES.map(([re, nome, nota]) => {
+    const hits = bank_transactions.filter(t => re.test(String(t.descricao || '').toUpperCase()))
+    const cat = t => categoriesById.get(t.categoria_id)?.nome || 'Por classificar'
+    return { nome, nota, hits, porClassificar: hits.filter(t => UNCLASSIFIED.includes(cat(t))), outra: hits.filter(t => !UNCLASSIFIED.includes(cat(t)) && cat(t) !== nome) }
+  }), [bank_transactions, categoriesById])
+  const toApply = ruleStats.flatMap(r => r.porClassificar.map(t => ({ t, nome: r.nome })))
+
+  async function applyRules() {
+    let idOf
+    try { idOf = await ensureCategories(toApply.map(x => x.nome), categories, upsertLocal) } catch (e) { return toast(e.message, 'bad') }
+    let n = 0
+    for (const { t, nome } of toApply) {
+      const { data, error } = await supabase.from('bank_transactions').update({ categoria_id: idOf(nome) }).eq('id', t.id).select().single()
+      if (error) return toast(`Parou ao fim de ${n}: ${error.message}`, 'bad')
+      upsertLocal('bank_transactions', data)
+      n++
+    }
+    toast(`${n} movimentos classificados.`)
   }
 
   function exportChanges() {
@@ -92,6 +115,16 @@ export default function EditarCategorias() {
             </tbody>
           </table>
         </div>
+      </Panel>
+      <Panel title="Fornecedores conhecidos" hint="Movimentos novos destes fornecedores entram já com esta categoria. Aqui podes aplicar a regra aos que ainda estão por classificar; os que já têm outra categoria não são alterados."
+        actions={toApply.length > 0 && <ConfirmButton className="primary" confirmText={`Classificar ${toApply.length}`} onConfirm={applyRules}>Aplicar aos {toApply.length} por classificar</ConfirmButton>}>
+        <table className="mini-table">
+          <thead><tr><th>Fornecedor</th><th>Categoria</th><th className="money">Movimentos</th><th className="money">Por classificar</th><th className="money">Com outra categoria</th></tr></thead>
+          <tbody>{ruleStats.map(r => (
+            <tr key={r.nota}><td>{r.nota}</td><td>{r.nome}</td><td className="money">{r.hits.length}</td><td className="money">{r.porClassificar.length}</td>
+              <td className="money" title={r.outra.map(t => `${t.descricao}: ${categoriesById.get(t.categoria_id)?.nome}`).join('\n')}>{r.outra.length}</td></tr>
+          ))}</tbody>
+        </table>
       </Panel>
       <Panel title="Categorias" hint="Desmarca “conta como despesa” para movimentos que não são gastos da empresa (ex.: transferências entre empresas do grupo).">
         <div className="chips">
