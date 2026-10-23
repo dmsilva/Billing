@@ -8,6 +8,7 @@ import { isUnpaid } from '../lib/finance'
 export const PAGES = [
   { section: 'GESTÃO' },
   { path: '/', label: 'Visão geral', icon: '▦', title: 'Visão geral', sub: 'Controlo mensal · entradas e saídas' },
+  { path: '/resultados', label: 'Resultados', icon: '±', title: 'Resultados', sub: 'Faturado − despesas = lucro · mês a mês e no ano' },
   { path: '/analise', label: 'Análise', icon: '◔', title: 'Análise', sub: 'Por fornecedor, categoria, produto e imóvel' },
   { section: 'ENTRADAS' },
   { path: '/caixa', label: 'Caixa diária', icon: '▣', title: 'Caixa diária', sub: 'Fechos dos colaboradores · 7h · 15h · 23h' },

@@ -11,6 +11,7 @@ const Layout = lazy(() => import('./components/Layout'))
 const Rececao = lazy(() => import('./pages/Rececao'))
 const NovaPassword = lazy(() => import('./pages/NovaPassword'))
 const Dashboard = lazy(() => import('./pages/Dashboard'))
+const Resultados = lazy(() => import('./pages/Resultados'))
 const Analise = lazy(() => import('./pages/Analise'))
 const Movimentos = lazy(() => import('./pages/Movimentos'))
 const Faturas = lazy(() => import('./pages/Faturas'))
@@ -74,6 +75,7 @@ function Gate() {
         <Routes>
           <Route element={<Layout />}>
             <Route index element={<Dashboard />} />
+            <Route path="resultados" element={<Resultados />} />
             <Route path="analise" element={<Analise />} />
             <Route path="movimentos" element={<Movimentos />} />
             <Route path="entradas" element={<Entradas />} />
