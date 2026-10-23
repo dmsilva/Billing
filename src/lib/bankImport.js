@@ -117,6 +117,7 @@ export const SUPPLIER_RULES = [
   [/\bSTI\b/, 'Produtos de limpeza', 'STI: produtos de limpeza'],
   [/M[AÁ]RIO\s+MENDES/, 'Manutenção / bricolage', 'Mário Mendes: chaves e material de construção'],
   [/GASTOS\s+M[EÊ]S/, 'Gastos do mês', 'Contabilidade (inclui IRS e TSU mensais)'],
+  [/\b441\s+DUQUE\s+(?:D[AE]?\s+)?[AÁ]VILA/, 'Supermercado — Pingo Doce', '441 Duque de Ávila: Pingo Doce (novo nome no extrato)'],
   [/PROC\.?\s*RECLAM/, 'Devoluções a clientes (Booking)', 'Estornos a clientes da Booking'],
 ]
 
