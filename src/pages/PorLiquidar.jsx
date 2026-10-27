@@ -6,6 +6,7 @@ import { ConfirmButton, Empty, Kpi, Modal, Panel, useToast } from '../components
 import { unpaidBySupplier } from '../lib/finance'
 import { euro, sameAmount, sumBy } from '../lib/money'
 import { daysBetween, formatDate, todayIso } from '../lib/dates'
+import { summaryHtml, summaryText, supplierSummary } from '../lib/supplierSummary'
 
 // Faturas registadas como "Por pagar" (normalmente pela receção) e os pagamentos que as liquidaram.
 export default function PorLiquidar() {
@@ -14,6 +15,7 @@ export default function PorLiquidar() {
   const [q, setQ] = useState('')
   const [selected, setSelected] = useState(() => new Set())
   const [paying, setPaying] = useState(false)
+  const [summary, setSummary] = useState(false)
 
   const groups = useMemo(() => {
     const term = q.trim().toLowerCase()
@@ -88,6 +90,7 @@ export default function PorLiquidar() {
       {chosen.length > 0 && (
         <div className="pay-bar">
           <span><strong>{chosen.length}</strong> fatura(s) selecionada(s) · <strong>{euro(chosenTotal)}</strong></span>
+          <button className="secondary" onClick={() => setSummary(true)}>Resumo para o fornecedor</button>
           <button className="primary" disabled={!paymentsReady} onClick={() => setPaying(true)}>Liquidar selecionadas</button>
         </div>
       )}
@@ -109,6 +112,7 @@ export default function PorLiquidar() {
         ) : <Empty>Ainda não há pagamentos registados.</Empty>}
       </Panel>
 
+      {summary && <SummaryModal invoices={chosen} onClose={() => setSummary(false)} />}
       {paying && <PayModal invoices={chosen} total={chosenTotal} transactions={bank_transactions} payments={invoice_payments} allInvoices={invoices}
         onClose={() => setPaying(false)} onDone={() => { setSelected(new Set()); reload('invoices'); reload('invoice_payments') }} />}
     </>
@@ -169,6 +173,55 @@ function PayModal({ invoices, total, transactions, payments, allInvoices, onClos
       <div className="actions end">
         <button className="secondary" onClick={onClose}>Cancelar</button>
         <button className="primary" disabled={busy || semValor > 0 || !f.data} onClick={save}>{busy ? 'A registar…' : 'Registar pagamento'}</button>
+      </div>
+    </Modal>
+  )
+}
+
+// Resumo das faturas selecionadas para mandar ao fornecedor por email.
+function SummaryModal({ invoices, onClose }) {
+  const toast = useToast()
+  const s = useMemo(() => supplierSummary(invoices), [invoices])
+  const text = summaryText(s)
+  const subject = `Faturas a pagar${s.groups.length === 1 ? ` — ${s.groups[0].nome}` : ''}`
+
+  async function copy() {
+    try {
+      if (window.ClipboardItem) {
+        await navigator.clipboard.write([new window.ClipboardItem({
+          'text/html': new Blob([summaryHtml(s)], { type: 'text/html' }),
+          'text/plain': new Blob([text], { type: 'text/plain' }),
+        })])
+      } else await navigator.clipboard.writeText(text)
+      toast('Resumo copiado. Cola-o no email.')
+    } catch {
+      toast('Não foi possível copiar automaticamente. Seleciona a tabela e copia à mão.', 'bad')
+    }
+  }
+
+  return (
+    <Modal title={`Resumo para o fornecedor · ${euro(s.total)}`} onClose={onClose}>
+      {s.semValor > 0 && <div className="notice bad">{s.semValor} fatura(s) não têm valor: aparecem como “sem valor” e não entram no total.</div>}
+      <div className="supplier-summary">
+        {s.groups.map(g => (
+          <div key={g.nome}>
+            {s.groups.length > 1 && <div className="subhead">{g.nome}</div>}
+            <table className="mini-table">
+              <thead><tr><th>Data</th><th>Nº fatura</th><th className="money">Valor</th></tr></thead>
+              <tbody>
+                {g.linhas.map(l => <tr key={l.id}><td>{formatDate(l.data)}</td><td>{l.documento || '—'}</td><td className="money">{l.valor == null ? 'sem valor' : euro(l.valor)}</td></tr>)}
+                <tr className="total-row"><td colSpan={2}><strong>Total</strong></td><td className="money"><strong>{euro(g.total)}</strong></td></tr>
+              </tbody>
+            </table>
+          </div>
+        ))}
+        {s.groups.length > 1 && <div className="breakfast-total"><span>Total geral</span><strong>{euro(s.total)}</strong></div>}
+      </div>
+      <p className="muted small">“Copiar” guarda a tabela para colares no email (no Gmail e no Outlook fica com as linhas da tabela). “Abrir email” abre um email novo já com o resumo em texto.</p>
+      <div className="actions end">
+        <button className="secondary" onClick={onClose}>Fechar</button>
+        <a className="secondary btn-link" href={`mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(`Bom dia,\n\nSeguem as faturas que vamos pagar:\n\n${text}\n\nCumprimentos`)}`}>Abrir email</a>
+        <button className="primary" onClick={copy}>Copiar resumo</button>
       </div>
     </Modal>
   )
