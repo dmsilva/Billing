@@ -47,6 +47,13 @@ describe('conferência com o extrato', () => {
     expect(matchInvoicesToBank([a, b], txs)).toEqual([])
     expect(matchInvoicesToBank([a], txs, new Set([10]))).toEqual([])
   })
+  it('nunca liga só pelo valor: o movimento tem de ter o nome do fornecedor', () => {
+    const farmacia = [{ id: 20, data_mov: '2026-10-03', descricao: 'COMPRA FARMACIA AVENIDA', valor: 50 }]
+    expect(matchInvoicesToBank([inv({ fornecedor: 'Padaria Sol, Lda', valor: 50, data: '2026-10-02' })], farmacia)).toEqual([])
+    expect(matchInvoicesToBank([inv({ fornecedor: 'Grão de Trigo', valor: 45.2, data: '2026-10-19' })], txs)).toEqual([])
+    const padaria = [{ id: 21, data_mov: '2026-10-03', descricao: 'COMPRA PADARIA LUA', valor: 50 }]
+    expect(matchInvoicesToBank([inv({ fornecedor: 'Padaria Sol', valor: 50, data: '2026-10-02' })], padaria)).toEqual([])
+  })
   it('em numerário só liga se o movimento tiver o nome do fornecedor', () => {
     expect(matchInvoicesToBank([inv({ pagamento: 'Numerário', fornecedor: 'Continente', valor: 12, data: '2026-10-05' })], txs)).toEqual([{ invoiceId: 1, txId: 12 }])
     expect(matchInvoicesToBank([inv({ pagamento: 'Numerário', fornecedor: 'Padaria Sol', valor: 12, data: '2026-10-05' })], txs)).toEqual([])

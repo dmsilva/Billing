@@ -1,7 +1,8 @@
 // Conferência e classificação automáticas das faturas.
 //  - Categoria: primeiro a que já foi usada para o mesmo fornecedor, depois regras por nome.
 //  - Extrato: a fatura enviada pela receção liga-se à saída CGD com o mesmo valor (de 2 dias
-//    antes a 7 depois da data da fatura), só quando a correspondência é única dos dois lados.
+//    antes a 7 depois da data da fatura) e com o nome do fornecedor no texto do banco, só
+//    quando a correspondência é única dos dois lados.
 import { daysBetween } from './dates.js'
 import { sameAmount } from './money.js'
 import { ruleCategory } from './bankImport.js'
@@ -11,7 +12,9 @@ const norm = s => String(s || '').toUpperCase().normalize('NFD').replace(/[̀-ͯ
 // Palavras que não identificam o fornecedor.
 const STOP = new Set(['LDA', 'SA', 'UNIPESSOAL', 'UNIP', 'COMERCIO', 'COM', 'DISTRIBUICAO', 'SOCIEDADE', 'PORTUGAL', 'PORTUGUESA', 'LISBOA', 'LOJA', 'ALIMENTAR', 'ALIMENTARES', 'RESTAURACAO', 'SERVICOS', 'EMPRESA', 'COMPANHIA'])
 export const supplierKey = s => norm(s).split(' ').filter(w => w && !STOP.has(w)).join(' ')
-const supplierWords = s => supplierKey(s).split(' ').filter(w => w.length >= 4)
+// Palavras genéricas (o tipo de loja) não chegam para dizer que o movimento é deste fornecedor.
+const GENERIC = new Set(['PADARIA', 'PASTELARIA', 'FARMACIA', 'SUPERMERCADO', 'HIPERMERCADOS', 'HIPERMERCADO', 'MERCEARIA', 'RESTAURANTE', 'CAFE', 'TALHO', 'FRUTARIA', 'DROGARIA', 'FERRAGENS', 'COMPRA', 'PAGAMENTO', 'TRANSFERENCIA'])
+const supplierWords = s => supplierKey(s).split(' ').filter(w => w.length >= 4 && !GENERIC.has(w))
 
 // [expressão sobre o nome do fornecedor, categoria]
 export const INVOICE_RULES = [
@@ -81,8 +84,9 @@ export function matchInvoicesToBank(invoices, transactions, used = new Set()) {
       if (!sameAmount(Math.abs(Number(t.valor)), Number(inv.valor))) return false
       const d = daysBetween(inv.data, t.data_mov)
       if (d < -2 || d > 7) return false
-      // Paga em numerário segundo a receção: só se o movimento tiver o nome do fornecedor.
-      return inv.pagamento === 'CGD' || mentionsSupplier(inv.fornecedor, t.descricao)
+      // O valor sozinho não chega (há muitas compras com o mesmo valor): o texto do banco
+      // tem de ter o nome do fornecedor.
+      return mentionsSupplier(inv.fornecedor, t.descricao)
     })
     if (cands.length === 1) options.set(inv.id, cands[0].id)
   }
