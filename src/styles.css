@@ -299,3 +299,4 @@ td.wrap{white-space:normal;min-width:180px}
 @media(max-width:760px){.dup-row{grid-template-columns:1fr}}
 .money-input{width:110px;text-align:right;padding:5px 8px}.bonus-grid small{font-size:11px}
 .bulk-bar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:10px 12px;margin-bottom:10px;border:1px solid #c9d8fb;background:#f3f7ff;border-radius:12px}.bulk-bar select{height:38px}tr.row-selected td{background:#f3f7ff}
+.supplier-summary{margin-bottom:12px}.supplier-summary .total-row td{border-top:2px solid var(--line)}a.btn-link{display:inline-flex;align-items:center;text-decoration:none}
