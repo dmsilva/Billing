@@ -46,3 +46,33 @@ export async function deleteInvoiceFile(file) {
   const { error: e2 } = await supabase.from('invoice_files').delete().eq('id', file.id)
   if (e2) throw e2
 }
+
+// Comprovativos de pagamento: ficam no mesmo bucket privado, numa pasta por pagamento.
+const proofFolder = paymentId => `pagamentos/${paymentId}`
+
+export async function uploadPaymentProof({ file, paymentId }) {
+  const path = `${proofFolder(paymentId)}/${Date.now()}-${safeName(file.name)}`
+  const { error } = await supabase.storage.from(BUCKET).upload(path, file, { contentType: fileType(file) || 'application/octet-stream', upsert: false })
+  if (error) throw error
+  return path
+}
+
+export async function listPaymentProofs(paymentId) {
+  const { data, error } = await supabase.storage.from(BUCKET).list(proofFolder(paymentId))
+  if (error) throw error
+  return (data || []).filter(o => o.name && o.id !== null && o.name !== '.emptyFolderPlaceholder').map(o => ({ path: `${proofFolder(paymentId)}/${o.name}`, nome: o.name.replace(/^\d+-/, '') }))
+}
+
+// Ids dos pagamentos que já têm comprovativo (as subpastas de "pagamentos").
+export async function paymentsWithProof() {
+  const { data, error } = await supabase.storage.from(BUCKET).list('pagamentos', { limit: 10000 })
+  if (error) throw error
+  return new Set((data || []).map(o => Number(o.name)).filter(Boolean))
+}
+
+export async function deletePaymentProofs(paymentId) {
+  const files = await listPaymentProofs(paymentId)
+  if (!files.length) return
+  const { error } = await supabase.storage.from(BUCKET).remove(files.map(f => f.path))
+  if (error) throw error
+}

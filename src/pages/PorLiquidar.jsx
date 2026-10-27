@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useData } from '../data/DataProvider'
 import { supabase } from '../supabase'
@@ -7,6 +7,7 @@ import { unpaidBySupplier } from '../lib/finance'
 import { euro, sameAmount, sumBy } from '../lib/money'
 import { daysBetween, formatDate, todayIso } from '../lib/dates'
 import { summaryHtml, summaryText, supplierSummary } from '../lib/supplierSummary'
+import { ACCEPTED, deletePaymentProofs, listPaymentProofs, paymentsWithProof, signedUrl, uploadPaymentProof, validateFile } from '../data/files'
 
 // Faturas registadas como "Por pagar" (normalmente pela receção) e os pagamentos que as liquidaram.
 export default function PorLiquidar() {
@@ -16,6 +17,9 @@ export default function PorLiquidar() {
   const [selected, setSelected] = useState(() => new Set())
   const [paying, setPaying] = useState(false)
   const [summary, setSummary] = useState(false)
+  const [withProof, setWithProof] = useState(() => new Set())
+  const loadProofs = useCallback(() => { paymentsWithProof().then(setWithProof).catch(() => {}) }, [])
+  useEffect(loadProofs, [loadProofs])
 
   const groups = useMemo(() => {
     const term = q.trim().toLowerCase()
@@ -41,6 +45,8 @@ export default function PorLiquidar() {
   async function undo(p) {
     const { data, error } = await supabase.rpc('anular_pagamento', { p_payment_id: p.id })
     if (error) return toast(`Não foi possível anular: ${error.message}`, 'bad')
+    await deletePaymentProofs(p.id).catch(() => {})
+    loadProofs()
     toast(`Pagamento anulado: ${data.faturas} fatura(s) voltaram a ficar por pagar.`)
     reload('invoices')
     reload('invoice_payments')
@@ -99,10 +105,11 @@ export default function PorLiquidar() {
         {invoice_payments.length ? (
           <div className="tablewrap">
             <table className="mini-table">
-              <thead><tr><th>Data</th><th>Fornecedor</th><th>Meio</th><th>Referência</th><th className="money">Faturas</th><th className="money">Valor</th><th /></tr></thead>
+              <thead><tr><th>Data</th><th>Fornecedor</th><th>Meio</th><th>Referência</th><th>Comprovativo</th><th className="money">Faturas</th><th className="money">Valor</th><th /></tr></thead>
               <tbody>{[...invoice_payments].sort((a, b) => String(b.data).localeCompare(String(a.data)) || b.id - a.id).map(p => (
                 <tr key={p.id}>
                   <td>{formatDate(p.data)}</td><td>{p.fornecedor || 'Vários'}</td><td>{p.meio}</td><td>{p.referencia || '—'}</td>
+                  <td><ProofCell paymentId={p.id} has={withProof.has(p.id)} onChange={loadProofs} /></td>
                   <td className="money">{invoicesByPayment.get(p.id)?.length || 0}</td><td className="money"><strong>{euro(p.valor)}</strong></td>
                   <td><ConfirmButton className="link-btn" confirmText="Anular pagamento" onConfirm={() => undo(p)}>Anular</ConfirmButton></td>
                 </tr>
@@ -114,7 +121,7 @@ export default function PorLiquidar() {
 
       {summary && <SummaryModal invoices={chosen} onClose={() => setSummary(false)} />}
       {paying && <PayModal invoices={chosen} total={chosenTotal} transactions={bank_transactions} payments={invoice_payments} allInvoices={invoices}
-        onClose={() => setPaying(false)} onDone={() => { setSelected(new Set()); reload('invoices'); reload('invoice_payments') }} />}
+        onClose={() => setPaying(false)} onDone={() => { setSelected(new Set()); reload('invoices'); reload('invoice_payments'); loadProofs() }} />}
     </>
   )
 }
@@ -123,6 +130,7 @@ function PayModal({ invoices, total, transactions, payments, allInvoices, onClos
   const toast = useToast()
   const [f, setF] = useState({ data: todayIso(), meio: 'CGD', referencia: '', observacoes: '', bank_transaction_id: null })
   const [busy, setBusy] = useState(false)
+  const [proof, setProof] = useState(null)
   const semValor = invoices.filter(i => i.valor == null).length
   const used = useMemo(() => new Set([...payments.map(p => p.bank_transaction_id), ...allInvoices.map(i => i.bank_transaction_id)].filter(Boolean)), [payments, allInvoices])
   // Movimentos do extrato com o mesmo valor do pagamento, mais próximos da data primeiro.
@@ -137,9 +145,12 @@ function PayModal({ invoices, total, transactions, payments, allInvoices, onClos
       p_ids: invoices.map(i => i.id), p_data: f.data, p_meio: f.meio, p_referencia: f.referencia, p_observacoes: f.observacoes,
       p_bank_transaction_id: f.meio === 'CGD' ? f.bank_transaction_id : null,
     })
+    if (error) { setBusy(false); return toast(`Não foi possível liquidar: ${error.message}`, 'bad') }
+    let proofFailed = false
+    if (proof) await uploadPaymentProof({ file: proof, paymentId: data.pagamento }).catch(() => { proofFailed = true })
     setBusy(false)
-    if (error) return toast(`Não foi possível liquidar: ${error.message}`, 'bad')
     toast(`Pagamento registado: ${data.faturas} fatura(s), ${euro(data.valor)}.`)
+    if (proofFailed) toast('O comprovativo não foi guardado. Junta-o outra vez em “Pagamentos registados”.', 'bad')
     onDone()
     onClose()
   }
@@ -156,6 +167,14 @@ function PayModal({ invoices, total, transactions, payments, allInvoices, onClos
         </label>
         <label className="span2">Referência <span className="opt">(opcional)</span><input value={f.referencia} onChange={e => setF({ ...f, referencia: e.target.value })} placeholder="Ex.: Transferência outubro" /></label>
         <label className="span2">Observações <span className="opt">(opcional)</span><input value={f.observacoes} onChange={e => setF({ ...f, observacoes: e.target.value })} /></label>
+        <label className="span2">Comprovativo de pagamento <span className="opt">(opcional, PDF ou foto)</span>
+          <input type="file" accept={ACCEPTED} onChange={e => {
+            const file = e.target.files?.[0] || null
+            const err = file && validateFile(file)
+            if (err) { toast(err, 'bad'); e.target.value = ''; return setProof(null) }
+            setProof(file)
+          }} />
+        </label>
       </div>
       {f.meio === 'CGD' && (
         <div className="bank-link">
@@ -175,6 +194,46 @@ function PayModal({ invoices, total, transactions, payments, allInvoices, onClos
         <button className="primary" disabled={busy || semValor > 0 || !f.data} onClick={save}>{busy ? 'A registar…' : 'Registar pagamento'}</button>
       </div>
     </Modal>
+  )
+}
+
+// Comprovativo de um pagamento já registado: ver o que existe ou juntar um novo.
+function ProofCell({ paymentId, has, onChange }) {
+  const toast = useToast()
+  const [files, setFiles] = useState([])
+  const [busy, setBusy] = useState(false)
+  useEffect(() => {
+    if (!has) return setFiles([])
+    let alive = true
+    listPaymentProofs(paymentId)
+      .then(list => Promise.all(list.map(async f => ({ ...f, url: await signedUrl(f.path).catch(() => null) }))))
+      .then(list => alive && setFiles(list))
+      .catch(() => {})
+    return () => { alive = false }
+  }, [paymentId, has])
+
+  async function add(e) {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    const err = validateFile(file)
+    if (err) return toast(err, 'bad')
+    setBusy(true)
+    try {
+      await uploadPaymentProof({ file, paymentId })
+      toast('Comprovativo guardado.')
+      onChange()
+    } catch (x) {
+      toast(`Não foi possível guardar o comprovativo: ${x.message}`, 'bad')
+    }
+    setBusy(false)
+  }
+
+  return (
+    <span className="proof-cell">
+      {files.map(f => f.url && <a key={f.path} href={f.url} target="_blank" rel="noreferrer" title={f.nome}>📎 Ver</a>)}
+      <label className="link-btn">{busy ? 'A guardar…' : has ? '+ Outro' : '+ Juntar'}<input type="file" accept={ACCEPTED} hidden disabled={busy} onChange={add} /></label>
+    </span>
   )
 }
 

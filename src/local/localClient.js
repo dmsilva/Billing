@@ -270,6 +270,21 @@ export function createLocalClient({ dataDir = `idb://${LOCAL_DB_NAME}`, storage 
           return { data: { signedUrl: url }, error: null }
         } catch (e) { return fail(e) }
       },
+      // Como no Supabase: devolve os ficheiros da pasta e as subpastas (estas com id null).
+      async list(prefix = '') {
+        try {
+          const pg = await db()
+          const base = prefix ? `${prefix.replace(/\/$/, '')}/` : ''
+          const { rows } = await pg.query(`select path from local.files where path like $1`, [`${base}%`])
+          const seen = new Map()
+          for (const { path } of rows) {
+            const rest = path.slice(base.length)
+            const [name, ...more] = rest.split('/')
+            if (!seen.has(name)) seen.set(name, { name, id: more.length ? null : path })
+          }
+          return { data: [...seen.values()].sort((a, b) => a.name.localeCompare(b.name)), error: null }
+        } catch (e) { return fail(e) }
+      },
       async remove(paths) {
         try {
           const pg = await db()
