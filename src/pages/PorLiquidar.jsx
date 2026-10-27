@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useData } from '../data/DataProvider'
 import { supabase } from '../supabase'
@@ -17,6 +17,8 @@ export default function PorLiquidar() {
   const [selected, setSelected] = useState(() => new Set())
   const [paying, setPaying] = useState(false)
   const [summary, setSummary] = useState(false)
+  const [open, setOpen] = useState(() => new Set())
+  const toggleOpen = id => setOpen(prev => { const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next })
   const [withProof, setWithProof] = useState(() => new Set())
   const loadProofs = useCallback(() => { paymentsWithProof().then(setWithProof).catch(() => {}) }, [])
   useEffect(loadProofs, [loadProofs])
@@ -101,19 +103,41 @@ export default function PorLiquidar() {
         </div>
       )}
 
-      <Panel title="Pagamentos registados" hint="Cada pagamento junta uma ou mais faturas. Anular volta a pô-las por pagar.">
+      <Panel title="Pagamentos registados" hint="Cada pagamento junta uma ou mais faturas: carrega no número de faturas para ver quais. Anular volta a pô-las por pagar.">
         {invoice_payments.length ? (
           <div className="tablewrap">
             <table className="mini-table">
               <thead><tr><th>Data</th><th>Fornecedor</th><th>Meio</th><th>Referência</th><th>Comprovativo</th><th className="money">Faturas</th><th className="money">Valor</th><th /></tr></thead>
-              <tbody>{[...invoice_payments].sort((a, b) => String(b.data).localeCompare(String(a.data)) || b.id - a.id).map(p => (
-                <tr key={p.id}>
+              <tbody>{[...invoice_payments].sort((a, b) => String(b.data).localeCompare(String(a.data)) || b.id - a.id).map(p => {
+                const linked = [...(invoicesByPayment.get(p.id) || [])].sort((a, b) => String(a.data).localeCompare(String(b.data)))
+                const isOpen = open.has(p.id)
+                return <Fragment key={p.id}>
+                <tr className={isOpen ? 'row-selected' : ''}>
                   <td>{formatDate(p.data)}</td><td>{p.fornecedor || 'Vários'}</td><td>{p.meio}</td><td>{p.referencia || '—'}</td>
                   <td><ProofCell paymentId={p.id} has={withProof.has(p.id)} onChange={loadProofs} /></td>
-                  <td className="money">{invoicesByPayment.get(p.id)?.length || 0}</td><td className="money"><strong>{euro(p.valor)}</strong></td>
+                  <td className="money"><button type="button" className="link-btn" onClick={() => toggleOpen(p.id)} aria-expanded={isOpen}>{linked.length} {isOpen ? '▴' : '▾'}</button></td><td className="money"><strong>{euro(p.valor)}</strong></td>
                   <td><ConfirmButton className="link-btn" confirmText="Anular pagamento" onConfirm={() => undo(p)}>Anular</ConfirmButton></td>
                 </tr>
-              ))}</tbody>
+                {isOpen && (
+                  <tr className="payment-invoices"><td colSpan={8}>
+                    {linked.length ? (
+                      <table className="mini-table">
+                        <thead><tr><th>Data</th><th>Nº fatura</th><th>Fornecedor</th><th>Descrição</th><th className="money">Valor</th></tr></thead>
+                        <tbody>{linked.map(i => (
+                          <tr key={i.id}>
+                            <td>{formatDate(i.data)}</td>
+                            <td><Link to={`/faturas/${i.id}`}>{i.documento || 'Abrir'}</Link></td>
+                            <td>{i.fornecedor || '—'}</td>
+                            <td className="wrap">{i.descricao}</td>
+                            <td className="money">{i.valor == null ? '—' : euro(i.valor)}</td>
+                          </tr>
+                        ))}</tbody>
+                      </table>
+                    ) : <span className="muted small">Nenhuma fatura ligada a este pagamento.</span>}
+                  </td></tr>
+                )}
+                </Fragment>
+              })}</tbody>
             </table>
           </div>
         ) : <Empty>Ainda não há pagamentos registados.</Empty>}
