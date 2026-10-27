@@ -5,7 +5,7 @@ import { useData } from '../data/DataProvider'
 import { supabase } from '../supabase'
 import CategorySelect from '../components/CategorySelect'
 import { Badge, ConfirmButton, Panel, Select, StateBadge, useToast } from '../components/ui'
-import { ACCEPTED, deleteInvoiceFile, signedUrl, uploadInvoiceFile, validateFile } from '../data/files'
+import { ACCEPTED, deleteInvoiceFile, listPaymentProofs, signedUrl, uploadInvoiceFile, validateFile } from '../data/files'
 import { euro, euroExact, parseMoney, sameAmount, sumBy } from '../lib/money'
 import { daysBetween, formatDate, formatDateTime, todayIso } from '../lib/dates'
 import { invoiceCountsAsExpense } from '../lib/finance'
@@ -119,7 +119,7 @@ export default function FaturaEditor() {
           </div>
           <div className={`notice ${form.pagamento === 'CGD' ? '' : form.pagamento === 'Por pagar' ? 'warn' : 'ok'}`}>
             {form.payment_id
-              ? <>Liquidada em {formatDate(form.liquidada_em)} num pagamento agrupado. Para mudar o meio de pagamento, anula esse pagamento em <Link to="/por-liquidar">Por liquidar</Link>.</>
+              ? <>Liquidada em {formatDate(form.liquidada_em)} num pagamento agrupado. Para mudar o meio de pagamento, anula esse pagamento em <Link to="/por-liquidar">Por liquidar</Link>. <PaymentProofLinks paymentId={form.payment_id} /></>
               : form.pagamento === 'Por pagar'
               ? <>Por pagar: ainda não entra nos totais. Liquida-a em <Link to="/por-liquidar">Por liquidar</Link> (sozinha ou junto com outras do mesmo fornecedor).</>
               : form.pagamento === 'CGD'
@@ -301,4 +301,18 @@ function LinesPanel({ invoice, lines, valor }) {
       </div>
     </Panel>
   )
+}
+
+// Comprovativo(s) do pagamento agrupado em que a fatura foi liquidada.
+function PaymentProofLinks({ paymentId }) {
+  const [files, setFiles] = useState([])
+  useEffect(() => {
+    let alive = true
+    listPaymentProofs(paymentId)
+      .then(list => Promise.all(list.map(async f => ({ ...f, url: await signedUrl(f.path).catch(() => null) }))))
+      .then(list => alive && setFiles(list.filter(f => f.url)))
+      .catch(() => {})
+    return () => { alive = false }
+  }, [paymentId])
+  return files.map(f => <a key={f.path} href={f.url} target="_blank" rel="noreferrer" style={{ marginLeft: 8 }}>📎 Comprovativo de pagamento</a>)
 }
