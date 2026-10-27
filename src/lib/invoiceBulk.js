@@ -1,4 +1,4 @@
-// Alterações a várias faturas de uma vez (Recebidas). Devolve o que gravar em cada fatura
+// Alterações a várias faturas de uma vez (página Faturas). Devolve o que gravar em cada fatura
 // ou o motivo para a deixar como está; segue as mesmas regras do editor da fatura.
 import { todayIso } from './dates.js'
 

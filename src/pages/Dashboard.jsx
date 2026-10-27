@@ -163,7 +163,7 @@ export default function Dashboard() {
 
       <div className="dash-grid bottom-grid">
         <Panel title="⚠ Precisa da tua atenção" hint="Itens que merecem revisão" className="attention-panel">
-          <AttentionItem icon="▤" to="/recebidas" title={`${attention.porValidar} faturas por validar`} text="Documentos registados no período" />
+          <AttentionItem icon="▤" to="/faturas" title={`${attention.porValidar} faturas por validar`} text="Documentos registados no período" />
           {attention.porLiquidar > 0 && <AttentionItem icon="🕓" tone="amber" to="/por-liquidar" title={`${attention.porLiquidar} faturas por liquidar`} text="Registadas como por pagar" />}
           <AttentionItem icon="€" tone="amber" to="/conferencia" title={`${attention.caixasPorConferir} caixas por conferir`} text="Fechos ainda sem conferência completa" />
           <AttentionItem icon="≠" tone="red" to="/conferencia" title={`${attention.diferencas} diferenças na conferência`} text="Valores reais diferentes do esperado" />
