@@ -112,6 +112,9 @@ export function lerHorario(wb, ano, mes) {
   }
 }
 
+// Notas que vão sempre na folha, seja qual for o mês (pelo primeiro nome).
+export const NOTAS_FIXAS = { fabio: 'Recepcionista nocturno' }
+
 // "Galia" no horário corresponde a "Galina Sabaeva" na contabilidade.
 export function casarNome(nomeHorario, nomes) {
   const a = norm(nomeHorario).split(' ')[0]
@@ -141,6 +144,8 @@ export function preencherOrdenados(wbOrdenados, horario, ano, mes) {
   escrever(2, nomeCol, `Mês: ${MESES[mes - 1][0].toUpperCase()}${MESES[mes - 1].slice(1)} ${ano}`)
 
   const resumo = [], semPar = []
+  // As notas são refeitas todos os meses: as fixas e as do horário deste mês.
+  const notasPorLinha = new Map(nomes.map(n => [n.r, [NOTAS_FIXAS[norm(n.nome).split(' ')[0]]].filter(Boolean)]))
   const dias = l => `${l.join(', ')}/${String(mes).padStart(2, '0')}`
   for (const f of horario.funcionarios) {
     const alvo = casarNome(f.nome, nomes)
@@ -153,11 +158,44 @@ export function preencherOrdenados(wbOrdenados, horario, ano, mes) {
     if (f.feriados.length) notas.push(`Feriado trabalhado: ${dias(f.feriados)}`)
     if (f.ferias.length) notas.push(`Férias: ${dias(f.ferias)}`)
     if (f.faltas.length) notas.push(`Falta justificada (${f.faltas.length}): ${dias(f.faltas)}`)
-    const antiga = String(valor(ws.getCell(alvo.r, cols.notas)) ?? '').trim()
-    escrever(alvo.r, cols.notas, [antiga, ...notas].filter(Boolean).join('; ') || null)
+    notasPorLinha.get(alvo.r).push(...notas)
     resumo.push({ ...f, nomeContabilidade: alvo.nome })
   }
-  return { folha: ws.name, resumo, semPar, alteracoes }
+  for (const [r, notas] of notasPorLinha) escrever(r, cols.notas, notas.join('; ') || null)
+  const ultimaColuna = Math.max(...[3, 4].flatMap(r => { const cs = []; ws.getRow(r).eachCell((c, col) => cs.push(col)); return cs }), cols.notas)
+  const ultimaLinha = nomes.length ? nomes[nomes.length - 1].r : hdrRow
+  return { folha: ws.name, resumo, semPar, alteracoes, ultimaColuna, ultimaLinha }
+}
+
+// Ficheiro só com a folha da contabilidade (cabeçalho e funcionários, colunas A até às Notas/IRS),
+// com o mesmo aspeto do Excel original: estilos, larguras, alturas e células unidas.
+export function folhaParaContabilidade(ExcelJS, wsOriginal, resultado, ano, mes) {
+  const { alteracoes, ultimaColuna, ultimaLinha } = resultado
+  const novos = new Map(alteracoes.map(a => [`${a.linha}:${a.coluna}`, a.valor]))
+  const wb = new ExcelJS.Workbook()
+  const ws = wb.addWorksheet(`${MESES[mes - 1][0].toUpperCase()}${MESES[mes - 1].slice(1)} ${ano}`)
+  for (let c = 1; c <= ultimaColuna; c++) {
+    const w = wsOriginal.getColumn(c).width
+    if (w) ws.getColumn(c).width = w
+  }
+  for (let r = 1; r <= ultimaLinha; r++) {
+    const orig = wsOriginal.getRow(r)
+    const row = ws.getRow(r)
+    if (orig.height) row.height = orig.height
+    for (let c = 1; c <= ultimaColuna; c++) {
+      const o = wsOriginal.getCell(r, c)
+      if (o.isMerged && o.master !== o) continue
+      const cell = ws.getCell(r, c)
+      cell.value = novos.has(`${r}:${c}`) ? novos.get(`${r}:${c}`) : o.value
+      cell.style = JSON.parse(JSON.stringify(o.style || {}))
+    }
+  }
+  for (const m of wsOriginal.model.merges || []) {
+    const [a, b] = m.split(':').map(ref => wsOriginal.getCell(ref))
+    if (b && b.row <= ultimaLinha && b.col <= ultimaColuna) ws.mergeCells(a.row, a.col, b.row, b.col)
+  }
+  ws.pageSetup = { paperSize: 9, orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0, horizontalCentered: true, showGridLines: true }
+  return wb
 }
 
 export async function gerarOrdenados(ficheiroHorario, ficheiroOrdenados, ano, mes) {
@@ -170,7 +208,8 @@ export async function gerarOrdenados(ficheiroHorario, ficheiroOrdenados, ano, me
   const resultado = preencherOrdenados(wbO, horario, ano, mes)
   // Escreve só as células alteradas no ficheiro original, para não perder formatação nem fórmulas.
   const buffer = await alterarCelulas(await ficheiroOrdenados.arrayBuffer(), resultado.folha, resultado.alteracoes)
-  return { ...resultado, folhaHorario: horario.folha, buffer }
+  const contabilidade = await folhaParaContabilidade(ExcelJS, wbO.getWorksheet(resultado.folha), resultado, ano, mes).xlsx.writeBuffer()
+  return { ...resultado, folhaHorario: horario.folha, buffer, contabilidade }
 }
 
 export async function lerMesesDoFicheiro(ficheiro) {

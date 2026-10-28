@@ -40,9 +40,10 @@ export default function Ordenados() {
     try {
       const r = await gerarOrdenados(horario, ordenados, ano, m)
       const nome = `${ordenados.name.replace(/\.xlsx$/i, '')}_${nomeMes(ano, m).replace(' ', '_')}.xlsx`
-      descarregar(r.buffer, nome)
-      setResultado({ ...r, ano, mes: m, nome })
-      toast(`Ficheiro ${nome} criado.`)
+      const nomeContab = `Ordenados_contabilidade_${nomeMes(ano, m).replace(' ', '_')}.xlsx`
+      descarregar(r.contabilidade, nomeContab)
+      setResultado({ ...r, ano, mes: m, nome, nomeContab })
+      toast(`Ficheiro ${nomeContab} criado.`)
     } catch (e) { toast(e.message, 'bad') }
     setBusy(false)
   }
@@ -50,7 +51,7 @@ export default function Ordenados() {
   const r = resultado
   return (
     <>
-      <Panel title="Ordenados para a contabilidade" hint="Envia o horário dos funcionários e o Excel dos ordenados. A folha “para contabilidade” é preenchida com os feriados trabalhados, as noites (23h às 7h), os dias de férias (azul) e, nas notas, as faltas justificadas (vermelho). O resto do Excel fica igual.">
+      <Panel title="Ordenados para a contabilidade" hint="Envia o horário dos funcionários e o Excel dos ordenados. Recebes o ficheiro para enviar à contabilidade: a folha “para contabilidade”, com o mesmo aspeto do Excel (código, nome, vencimento, admissão…), preenchida com os feriados trabalhados, as noites (23h às 7h), os dias de férias (azul) e, nas notas, as faltas justificadas (vermelho). O Fábio leva sempre “Recepcionista nocturno” nas notas.">
         <div className="actions">
           <label className="file-button"><input type="file" accept=".xlsx" onChange={e => e.target.files[0] && escolherHorario(e.target.files[0])} />{horario ? `Horário: ${horario.name}` : '1. Escolher o horário (Funcionários)'}</label>
           <label className="file-button"><input type="file" accept=".xlsx" onChange={e => { if (e.target.files[0]) { setOrdenados(e.target.files[0]); setResultado(null) } }} />{ordenados ? `Ordenados: ${ordenados.name}` : '2. Escolher o Excel dos ordenados'}</label>
@@ -64,7 +65,10 @@ export default function Ordenados() {
       </Panel>
       {r && (
         <Panel title={`Resumo de ${nomeMes(r.ano, r.mes)}`} hint={`Folha “${r.folhaHorario}” do horário. Cada noite conta no dia em que começa; o feriado conta quando há horário nesse dia.`}
-          actions={<button className="secondary" onClick={() => descarregar(r.buffer, r.nome)}>Descarregar outra vez</button>}>
+          actions={<>
+            <button className="secondary" onClick={() => descarregar(r.contabilidade, r.nomeContab)}>Descarregar outra vez</button>
+            <button className="secondary" onClick={() => descarregar(r.buffer, r.nome)} title="O Excel dos ordenados completo, com a folha preenchida">Excel completo</button>
+          </>}>
           {r.semPar.length > 0 && (
             <div className="notice warn">
               Não estão na folha da contabilidade, por isso ficaram de fora: {r.semPar.map(f => `${f.nome} (${[
