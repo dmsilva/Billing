@@ -150,7 +150,9 @@ export default function PorLiquidar() {
   )
 }
 
-function PayModal({ invoices, total, transactions, payments, allInvoices, onClose, onDone }) {
+// prepare (opcional): corre antes de liquidar; devolve uma mensagem de erro para parar.
+// rollback (opcional): desfaz o prepare se a liquidação falhar.
+export function PayModal({ invoices, total, transactions, payments, allInvoices, onClose, onDone, prepare, rollback }) {
   const toast = useToast()
   const [f, setF] = useState({ data: todayIso(), meio: 'CGD', referencia: '', observacoes: '', bank_transaction_id: null })
   const [busy, setBusy] = useState(false)
@@ -165,11 +167,15 @@ function PayModal({ invoices, total, transactions, payments, allInvoices, onClos
 
   async function save() {
     setBusy(true)
+    if (prepare) {
+      const msg = await prepare()
+      if (msg) { setBusy(false); return toast(msg, 'bad') }
+    }
     const { data, error } = await supabase.rpc('liquidar_faturas', {
       p_ids: invoices.map(i => i.id), p_data: f.data, p_meio: f.meio, p_referencia: f.referencia, p_observacoes: f.observacoes,
       p_bank_transaction_id: f.meio === 'CGD' ? f.bank_transaction_id : null,
     })
-    if (error) { setBusy(false); return toast(`Não foi possível liquidar: ${error.message}`, 'bad') }
+    if (error) { if (rollback) await rollback(); setBusy(false); return toast(`Não foi possível liquidar: ${error.message}`, 'bad') }
     let proofFailed = false
     if (proof) await uploadPaymentProof({ file: proof, paymentId: data.pagamento }).catch(() => { proofFailed = true })
     setBusy(false)
