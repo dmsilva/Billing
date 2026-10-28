@@ -150,7 +150,8 @@ export function createLocalClient({ dataDir = `idb://${LOCAL_DB_NAME}`, storage 
       this.orders = []
       this.mode = 'many'
     }
-    select(columns = '*') {
+    select(columns = '*', { count } = {}) {
+      if (count) this.count = count
       if (this.op === 'select') this.columns = columns
       else this.returning = columns
       return this
@@ -161,6 +162,17 @@ export function createLocalClient({ dataDir = `idb://${LOCAL_DB_NAME}`, storage 
     delete() { this.op = 'delete'; return this }
     eq(col, value) { this.filters.push({ col, kind: 'eq', value }); return this }
     in(col, values) { this.filters.push({ col, kind: 'in', value: values }); return this }
+    neq(col, value) { this.filters.push({ col, kind: '<>', value }); return this }
+    gt(col, value) { this.filters.push({ col, kind: '>', value }); return this }
+    gte(col, value) { this.filters.push({ col, kind: '>=', value }); return this }
+    lt(col, value) { this.filters.push({ col, kind: '<', value }); return this }
+    lte(col, value) { this.filters.push({ col, kind: '<=', value }); return this }
+    ilike(col, value) { this.filters.push({ col, kind: 'ilike', value }); return this }
+    is(col, value) { this.filters.push({ col, kind: value === null ? 'is null' : 'eq', value }); return this }
+    not(col, op, value) {
+      if (op !== 'is' || value !== null) throw new Error(`Filtro não suportado no modo local: not.${op}`)
+      this.filters.push({ col, kind: 'is not null' }); return this
+    }
     order(col, { ascending = true } = {}) { this.orders.push(`${ident(col)} ${ascending ? 'asc' : 'desc'}`); return this }
     range(from, to) { this.offset = from; this.lim = to - from + 1; return this }
     limit(n) { this.lim = n; return this }
@@ -175,6 +187,12 @@ export function createLocalClient({ dataDir = `idb://${LOCAL_DB_NAME}`, storage 
           if (f.value === null) return `${alias}.${ident(f.col)} is null`
           params.push(f.value)
           return `${alias}.${ident(f.col)} = $${params.length}`
+        }
+        if (f.kind === 'is null' || f.kind === 'is not null') return `${alias}.${ident(f.col)} ${f.kind}`
+        if (f.kind !== 'in') {
+          params.push(f.value)
+          // Comparação como texto quando o valor é texto (datas, nomes); igual ao PostgREST na prática.
+          return `${alias}.${ident(f.col)}${f.kind === 'ilike' ? '::text' : ''} ${f.kind} $${params.length}`
         }
         if (!f.value.length) return 'false'
         return `${alias}.${ident(f.col)} in (${f.value.map(v => { params.push(v); return `$${params.length}` }).join(', ')})`
@@ -222,6 +240,11 @@ export function createLocalClient({ dataDir = `idb://${LOCAL_DB_NAME}`, storage 
       try {
         const { sql, params } = this.build()
         const rows = (await run(sql, params))[0]?.j || []
+        let count = null
+        if (this.count && this.op === 'select') {
+          const cp = []
+          count = Number((await run(`select count(*)::int as n from ${ident(this.table)} t${this.where(cp)}`, cp))[0]?.n ?? 0)
+        }
         const wantsRows = this.op === 'select' || this.returning != null
         if (!wantsRows) return { data: null, error: null, count: null, status: 204 }
         if (this.mode === 'single') {
@@ -229,7 +252,7 @@ export function createLocalClient({ dataDir = `idb://${LOCAL_DB_NAME}`, storage 
           return { data: rows[0], error: null, count: null, status: 200 }
         }
         if (this.mode === 'maybe') return { data: rows[0] ?? null, error: null, count: null, status: 200 }
-        return { data: rows, error: null, count: null, status: 200 }
+        return { data: rows, error: null, count, status: 200 }
       } catch (e) {
         return fail(e)
       }

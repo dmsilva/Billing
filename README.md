@@ -142,11 +142,13 @@ O modo local nunca entra no build de produção.
    | `VITE_SUPABASE_URL` | Project URL |
    | `VITE_SUPABASE_ANON_KEY` | chave **anon / publishable** |
    | `SUPABASE_SERVICE_ROLE_KEY` | chave **service_role** (só para a função que cria contas) |
-| `ANTHROPIC_API_KEY` | opcional: chave da [Anthropic](https://console.anthropic.com) para ler automaticamente as faturas na Receção |
+| `ANTHROPIC_API_KEY` | opcional: chave da [Anthropic](https://console.anthropic.com) para ler automaticamente as faturas na Receção e responder na página Perguntar |
 
    ⚠️ As variáveis que começam por `VITE_` ficam visíveis no navegador: nunca lá pôr chaves secretas. A `SUPABASE_SERVICE_ROLE_KEY` não tem esse prefixo e só é lida pela função do servidor `netlify/functions/criar-utilizador.mjs`, que confirma que quem pede é administradora antes de criar a conta. Se quiseres, marca-a como *secret* no Netlify.
 
    A `ANTHROPIC_API_KEY` também é secreta e só é lida pela função `netlify/functions/ler-fatura.mjs`. Quando a Receção junta uma foto ou PDF, a função lê fornecedor, NIF, data, nº do documento, total e IVA, e preenche os campos que ainda estão vazios; a pessoa confirma antes de enviar. O original guardado não é alterado. Cada leitura custa poucos cêntimos. Sem esta chave, a página funciona como antes e os campos escrevem-se à mão. No modo local a leitura não está disponível.
+
+   A mesma chave liga a página **Perguntar** (só para a administradora): perguntas em linguagem normal ("temos a fatura X?", "quanto fizemos em numerário em setembro?") respondidas pela função `netlify/functions/perguntar.mjs`. O Claude só pode consultar (nunca alterar) e as consultas são feitas com o login de quem pergunta, por isso as permissões do Supabase aplicam-se. Cada pergunta custa à volta de 5 a 12 cêntimos na conta da Anthropic.
 3. Fazer deploy. Entrar com a conta de administradora e abrir **Configuração** para confirmar que a validação está toda verde.
 
 ---

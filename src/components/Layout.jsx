@@ -11,6 +11,7 @@ export const PAGES = [
   { path: '/', label: 'Visão geral', icon: '▦', title: 'Visão geral', sub: 'Controlo mensal · entradas e saídas' },
   { path: '/resultados', label: 'Resultados', icon: '±', title: 'Resultados', sub: 'Faturado − despesas = lucro · mês a mês e no ano' },
   { path: '/analise', label: 'Análise', icon: '◔', title: 'Análise', sub: 'Por fornecedor, categoria, produto e imóvel' },
+  { path: '/perguntar', label: 'Perguntar', icon: '?', title: 'Perguntar', sub: 'Pergunta em linguagem normal e recebe a resposta com os dados reais' },
   { section: 'ENTRADAS' },
   { path: '/caixa', label: 'Caixa diária', icon: '▣', title: 'Caixa diária', sub: 'Fechos dos colaboradores · 7h · 15h · 23h' },
   { path: '/entradas', label: 'Entradas no banco', icon: '↘', title: 'Entradas no banco', sub: 'Expedia, Stripe, transferências de hóspedes · transferências da receção', badge: 'transferencias' },

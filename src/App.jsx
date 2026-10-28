@@ -26,6 +26,7 @@ const Conferencia = lazy(() => import('./pages/Conferencia'))
 const Utilizadores = lazy(() => import('./pages/Utilizadores'))
 const Configuracao = lazy(() => import('./pages/Configuracao'))
 const Ordenados = lazy(() => import('./pages/Ordenados'))
+const Perguntar = lazy(() => import('./pages/Perguntar'))
 
 const Loading = () => <div className="center-screen"><div className="spinner" />A carregar…</div>
 
@@ -76,6 +77,7 @@ function Gate() {
             <Route index element={<Dashboard />} />
             <Route path="resultados" element={<Resultados />} />
             <Route path="analise" element={<Analise />} />
+            <Route path="perguntar" element={<Perguntar />} />
             <Route path="movimentos" element={<Movimentos />} />
             <Route path="entradas" element={<Entradas />} />
             <Route path="faturas" element={<Faturas />} />
