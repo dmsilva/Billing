@@ -60,7 +60,7 @@ export function createLocalClient({ dataDir = `idb://${LOCAL_DB_NAME}`, storage 
     // A condição é resolvida no build: o PGlite e os SQL nunca entram no build de produção.
     const mod = import.meta.env.MODE === 'production' ? null : await import('./pglite.js')
     if (!mod) throw new Error('Modo local indisponível no build de produção')
-    const { PGlite, pgcrypto, SETUP_SQL, PAYMENTS_UPDATE_SQL, CREDITS_UPDATE_SQL, ENCARGOS_UPDATE_SQL } = mod
+    const { PGlite, pgcrypto, SETUP_SQL, PAYMENTS_UPDATE_SQL, CREDITS_UPDATE_SQL, ENCARGOS_UPDATE_SQL, SAFT_UPDATE_SQL } = mod
     const pg = await PGlite.create({ dataDir, extensions: { pgcrypto } })
     const ready = await pg.query(`select to_regclass('public.cash_closes') is not null as ok`)
     if (!ready.rows[0].ok) {
@@ -77,6 +77,8 @@ export function createLocalClient({ dataDir = `idb://${LOCAL_DB_NAME}`, storage 
     if (!credits.rows[0].ok) for (const sql of CREDITS_UPDATE_SQL) await pg.exec(sql)
     const encargos = await pg.query(`select to_regclass('public.encargos_pessoal') is not null as ok`)
     if (!encargos.rows[0].ok) for (const sql of ENCARGOS_UPDATE_SQL) await pg.exec(sql)
+    const saft = await pg.query(`select to_regclass('public.saft_documentos') is not null as ok`)
+    if (!saft.rows[0].ok) for (const sql of SAFT_UPDATE_SQL) await pg.exec(sql)
     // Bases criadas antes da criação de contas não tinham esta tabela.
     await pg.exec(`create schema if not exists local; create table if not exists local.passwords (user_id uuid primary key references auth.users(id) on delete cascade, hash text not null)`)
     return pg

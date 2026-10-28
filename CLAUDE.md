@@ -8,5 +8,6 @@
 - Supabase devolve no máximo 1000 linhas por pedido: usar o carregamento paginado de `src/data/DataProvider.jsx`.
 - Faturas "Por pagar" ficam fora dos totais até `liquidar_faturas` (em `supabase/05_faturas_por_pagar.sql`) as passar a CGD/Numerário. Alterações novas de esquema vão em ficheiros SQL numerados à parte (o Daniel executa-os no Supabase).
 - Entradas do extrato (créditos) ficam em `bank_credits` (`supabase/06_entradas_transferencias.sql`), nunca em `bank_transactions` (só saídas). A receção só vê `transferencias` e só as altera por `alocar_transferencia`.
+- SAF-T (`supabase/08_saft.sql`, `src/lib/saft.js`, `src/lib/saftReconcile.js`): é o faturado oficial; nos meses com SAF-T, `monthResult` usa-o como faturado e caixa + banco ficam como recebido. O TPA no banco é o MB + CV da caixa: só serve para conferir, nunca soma.
 - Segurança via RLS em `supabase/02_policies.sql`; o bucket `faturas` é privado (links assinados).
 - Antes de terminar: `npm test`, `npm run build` e, havendo PostgreSQL, `npm run test:sql` (não como root).

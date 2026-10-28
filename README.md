@@ -20,6 +20,7 @@ Gestão financeira do alojamento: despesas CGD e numerário, faturas com documen
 | **Por liquidar** | Faturas registadas como “Por pagar”, agrupadas por fornecedor. Escolhem-se várias e regista-se um só pagamento (CGD ou numerário), que pode ser anulado. |
 | **Produtos** | Análise por produto e tipo de produto (linhas das faturas). |
 | **Categorias / Editar categorias** | Totais por categoria e reclassificação de movimentos (com histórico). |
+| **SAF-T** | Importa o SAF-T de faturação (.xml ou .zip). Passa a ser o faturado oficial nos Resultados e mostra, dia a dia, o que não bate com a caixa diária e o TPA no banco: dias sem caixa, faturas sem recibo, anuladas, notas de crédito, saltos na numeração e faturado por canal. |
 | **Caixa diária** | Fechos por turno (7h, 15h, 23h), importação do Excel da caixa com pré-visualização, histórico e anulação, edição manual e TPA. |
 | **Conferência** | Conferência dos envelopes na ordem CV → MB → Numerário → próximo envelope. `Enter` ou **OK** aceita; escrever o valor real regista a diferença; cada conferência pode ser corrigida e fica com histórico. |
 | **Receção** (`/rececao`) | Página simples para telemóvel: tirar foto ou escolher foto/PDF, confirmar os campos (lidos automaticamente da fatura quando a leitura está ligada) e enviar. Aba **Transferências**: pesquisar se a transferência de um hóspede já chegou e alocá-la a um imóvel/quarto e reserva (sem ver o extrato nem o saldo). |
@@ -112,6 +113,7 @@ O modo local nunca entra no build de produção.
    4. `supabase/05_faturas_por_pagar.sql` (faturas por pagar e pagamentos agrupados)
    5. `supabase/06_entradas_transferencias.sql` (entradas do extrato e transferências da receção)
    6. `supabase/07_encargos_pessoal.sql` (TSU e IRS mensais, para o custo com pessoal em Resultados)
+   7. `supabase/08_saft.sql` (SAF-T: faturado oficial e cruzamento com a caixa e o banco, página SAF-T)
    7. Opcional: `supabase/04_verificacao.sql` (só leitura, mostra os totais)
 
    Os scripts podem ser executados mais do que uma vez sem duplicar dados.

@@ -14,7 +14,7 @@
 //    Câmara (categoria "Taxa turística / CML"), por isso no resultado anula-se.
 //  - "Entradas no banco" = créditos do extrato CGD (Expedia, Stripe, transferências de hóspedes…).
 //    Nunca são despesa; as marcadas com conta_como_entrada=false (ex.: entre contas próprias) ficam fora.
-import { sum, sumBy, sameAmount } from './money.js'
+import { sub, sum, sumBy, sameAmount } from './money.js'
 import { monthOf, monthsOfYear } from './dates.js'
 
 export const PAYMENT_CGD = 'CGD'
@@ -306,13 +306,16 @@ export function lineMonth(line, invoicesById) {
 //  - "TPA / Multibanco": é o dinheiro dos cartões da caixa (MB/CV) a chegar ao banco;
 //  - "Depósito": é o numerário da caixa depositado no banco;
 //  - entradas com conta_como_entrada=false (ex.: entre contas próprias).
+// Quando o mês tem SAF-T importado, o faturado passa a ser o do SAF-T (a faturação oficial);
+// caixa + banco fica como "recebido", para se ver a diferença.
 // Despesas = saídas CGD que contam como despesa + faturas pagas em numerário (accountingRows).
 export const CREDIT_FROM_CASH = new Set(['TPA / Multibanco', 'Depósito'])
 export const creditCountsAsRevenue = c => c.conta_como_entrada !== false && !CREDIT_FROM_CASH.has(c.tipo)
 export const isSalaryRow = r => supplierKey(r).grupo === 'Salários'
 
 // encargos: [{ mes, tsu, irs }] (TSU e IRS pagos dentro dos "Gastos do mês"; não somam às despesas).
-export function monthResult(month, { closes, credits, expenseRows, encargos = [] }) {
+// saft: { 'AAAA-MM': { total, cityTax } } (saftByMonth em saftReconcile.js).
+export function monthResult(month, { closes, credits, expenseRows, encargos = [], saft = {} }) {
   const cx = cashEntries(closes.filter(c => monthOf(c.data) === month))
   const cr = credits.filter(c => monthOf(c.data_mov) === month)
   const bancoList = cr.filter(creditCountsAsRevenue)
@@ -322,7 +325,9 @@ export function monthResult(month, { closes, credits, expenseRows, encargos = []
   const ex = expenseRows.filter(r => monthOf(r.data) === month)
   const t = totals(ex)
   const salarios = sumBy(ex.filter(isSalaryRow), r => r.valor)
-  const faturado = sum([cx.total, banco])
+  const recebido = sum([cx.total, banco])
+  const sf = saft[month]
+  const faturado = sf ? sf.total : recebido
   const enc = encargos.find(e => e.mes === month)
   const tsu = Number(enc?.tsu || 0)
   const irs = Number(enc?.irs || 0)
@@ -333,6 +338,10 @@ export function monthResult(month, { closes, credits, expenseRows, encargos = []
     bancoPorTipo: [...porTipo].map(([tipo, vs]) => ({ tipo, total: sum(vs) })).sort((a, b) => b.total - a.total),
     foraDoFaturado: sumBy(cr.filter(c => !creditCountsAsRevenue(c)), c => c.valor),
     faturado,
+    fonteFaturado: sf ? 'SAF-T' : 'Caixa + banco',
+    saft: sf ? sf.total : null,
+    recebido,
+    diferencaSaft: sf ? sub(sf.total, recebido) : null,
     despesas: t.total,
     despesasCgd: t.cgd,
     despesasNumerario: t.numerario,
@@ -347,7 +356,7 @@ export function monthResult(month, { closes, credits, expenseRows, encargos = []
     semSaidas: ex.filter(r => r.kind === 'bank').length === 0,
     // Só há resultado quando o mês tem caixa diária e extrato de saídas; sem um dos lados o
     // "lucro" seria só o faturado (ou só despesas) e enganava.
-    completo: cx.dias > 0 && ex.some(r => r.kind === 'bank'),
+    completo: (cx.dias > 0 || Boolean(sf)) && ex.some(r => r.kind === 'bank'),
   }
 }
 
