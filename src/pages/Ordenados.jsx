@@ -1,17 +1,18 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Empty, Panel, useToast } from '../components/ui'
-import { gerarOrdenados, lerMesesDoFicheiro, MESES } from '../lib/ordenados'
+import { gerarExcel, gerarPdf, lerMesesDoFicheiro, lerOrdenados, nomeMes } from '../lib/ordenados'
 
 const XLSX_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-const nomeMes = (ano, mes) => `${MESES[mes - 1][0].toUpperCase()}${MESES[mes - 1].slice(1)} ${ano}`
 
-function descarregar(buffer, nome) {
+function descarregar(buffer, nome, type) {
   const a = document.createElement('a')
-  a.href = URL.createObjectURL(new Blob([buffer], { type: XLSX_TYPE }))
+  a.href = URL.createObjectURL(new Blob([buffer], { type }))
   a.download = nome
   a.click()
   setTimeout(() => URL.revokeObjectURL(a.href), 1000)
 }
+
+const resumoDias = l => (l.length ? `${l.join(', ')}` : '')
 
 export default function Ordenados() {
   const toast = useToast()
@@ -20,10 +21,10 @@ export default function Ordenados() {
   const [meses, setMeses] = useState([])
   const [mes, setMes] = useState('')
   const [busy, setBusy] = useState(false)
-  const [resultado, setResultado] = useState(null)
+  const [dados, setDados] = useState(null)
 
   async function escolherHorario(file) {
-    setHorario(file); setResultado(null)
+    setHorario(file); setDados(null)
     try {
       const lista = await lerMesesDoFicheiro(file)
       setMeses(lista)
@@ -34,53 +35,68 @@ export default function Ordenados() {
     } catch (e) { setMeses([]); toast(`Não consegui ler o horário: ${e.message}`, 'bad') }
   }
 
-  async function gerar() {
+  useEffect(() => {
+    if (!horario || !ordenados || !mes) return
+    let ativo = true
     const [ano, m] = mes.split('-').map(Number)
     setBusy(true)
+    lerOrdenados(horario, ordenados, ano, m)
+      .then(d => { if (ativo) setDados(d) })
+      .catch(e => { if (ativo) { setDados(null); toast(e.message, 'bad') } })
+      .finally(() => { if (ativo) setBusy(false) })
+    return () => { ativo = false }
+  }, [horario, ordenados, mes, toast])
+
+  const setNota = (i, nota) => setDados(d => ({ ...d, linhas: d.linhas.map((l, k) => (k === i ? { ...l, nota } : l)) }))
+  const base = dados ? `Ordenados_contabilidade_${nomeMes(dados.ano, dados.mes).replace(' ', '_')}` : ''
+
+  async function baixar(tipo) {
+    setBusy(true)
     try {
-      const r = await gerarOrdenados(horario, ordenados, ano, m)
-      const nome = `${ordenados.name.replace(/\.xlsx$/i, '')}_${nomeMes(ano, m).replace(' ', '_')}.xlsx`
-      const nomeContab = `Ordenados_contabilidade_${nomeMes(ano, m).replace(' ', '_')}.xlsx`
-      descarregar(r.contabilidade, nomeContab)
-      setResultado({ ...r, ano, mes: m, nome, nomeContab })
-      toast(`Ficheiro ${nomeContab} criado.`)
+      if (tipo === 'pdf') descarregar(await gerarPdf(dados), `${base}.pdf`, 'application/pdf')
+      else descarregar(await gerarExcel(dados), `${base}.xlsx`, XLSX_TYPE)
     } catch (e) { toast(e.message, 'bad') }
     setBusy(false)
   }
 
-  const r = resultado
   return (
     <>
-      <Panel title="Ordenados para a contabilidade" hint="Envia o horário dos funcionários e o Excel dos ordenados. Recebes o ficheiro para enviar à contabilidade: a folha “para contabilidade”, com o mesmo aspeto do Excel (código, nome, vencimento, admissão…), preenchida com os feriados trabalhados, as noites (23h às 7h), os dias de férias (azul) e, nas notas, as faltas justificadas (vermelho). O Fábio leva sempre “Recepcionista nocturno” nas notas.">
+      <Panel title="Ordenados para a contabilidade" hint="Envia o horário dos funcionários e o Excel dos ordenados. Contamos os feriados trabalhados, as noites (23h às 7h) e os dias de férias (azul). Escreve as notas que quiseres e descarrega em Excel ou PDF.">
         <div className="actions">
           <label className="file-button"><input type="file" accept=".xlsx" onChange={e => e.target.files[0] && escolherHorario(e.target.files[0])} />{horario ? `Horário: ${horario.name}` : '1. Escolher o horário (Funcionários)'}</label>
-          <label className="file-button"><input type="file" accept=".xlsx" onChange={e => { if (e.target.files[0]) { setOrdenados(e.target.files[0]); setResultado(null) } }} />{ordenados ? `Ordenados: ${ordenados.name}` : '2. Escolher o Excel dos ordenados'}</label>
+          <label className="file-button"><input type="file" accept=".xlsx" onChange={e => { if (e.target.files[0]) { setOrdenados(e.target.files[0]); setDados(null) } }} />{ordenados ? `Ordenados: ${ordenados.name}` : '2. Escolher o Excel dos ordenados'}</label>
           {meses.length > 0 && (
-            <select value={mes} onChange={e => { setMes(e.target.value); setResultado(null) }} aria-label="Mês">
+            <select value={mes} onChange={e => { setMes(e.target.value); setDados(null) }} aria-label="Mês">
               {meses.map(x => <option key={x.folha} value={`${x.ano}-${x.mes}`}>{nomeMes(x.ano, x.mes)}</option>)}
             </select>
           )}
-          <button className="primary" disabled={busy || !horario || !ordenados || !mes} onClick={gerar}>{busy ? 'A preencher…' : 'Preencher e descarregar'}</button>
+          {busy && !dados && <span className="muted">A ler…</span>}
         </div>
       </Panel>
-      {r && (
-        <Panel title={`Resumo de ${nomeMes(r.ano, r.mes)}`} hint={`Folha “${r.folhaHorario}” do horário. Cada noite conta no dia em que começa; o feriado conta quando há horário nesse dia.`}
+      {dados && (
+        <Panel title={`Ordenados de ${nomeMes(dados.ano, dados.mes)}`} hint={`Folha “${dados.folhaHorario}” do horário. Cada noite conta no dia em que começa. As faltas justificadas (vermelho) só aparecem aqui; se quiseres que vão para a contabilidade, escreve-as nas notas.`}
           actions={<>
-            <button className="secondary" onClick={() => descarregar(r.contabilidade, r.nomeContab)}>Descarregar outra vez</button>
-            <button className="secondary" onClick={() => descarregar(r.buffer, r.nome)} title="O Excel dos ordenados completo, com a folha preenchida">Excel completo</button>
+            <button className="primary" disabled={busy} onClick={() => baixar('xlsx')}>Descarregar Excel</button>
+            <button className="secondary" disabled={busy} onClick={() => baixar('pdf')}>Descarregar PDF</button>
           </>}>
-          {r.semPar.length > 0 && (
+          {dados.semPar.length > 0 && (
             <div className="notice warn">
-              Não estão na folha da contabilidade, por isso ficaram de fora: {r.semPar.map(f => `${f.nome} (${[
-                f.feriados.length && `${f.feriados.length} feriado`, f.noites && `${f.noites} noites`, f.ferias.length && `${f.ferias.length} dias de férias`, f.faltas.length && `${f.faltas.length} faltas`,
-              ].filter(Boolean).join(', ')})`).join('; ')}.
+              Estão no horário mas não na folha da contabilidade, por isso ficam de fora: {dados.semPar.map(f => f.nome).join(', ')}.
             </div>
           )}
           <div className="tablewrap"><table className="mini-table">
-            <thead><tr><th>Nome</th><th className="money">Feriados</th><th className="money">Noites</th><th className="money">Férias</th><th className="money">Faltas just.</th></tr></thead>
-            <tbody>{r.resumo.length ? r.resumo.map(f => (
-              <tr key={f.nome}><td>{f.nomeContabilidade}</td><td className="money">{f.feriados.length || ''}</td><td className="money">{f.noites || ''}</td><td className="money">{f.ferias.length || ''}</td><td className="money">{f.faltas.length || ''}</td></tr>
-            )) : <Empty colSpan={5}>Nenhum funcionário do horário corresponde à folha da contabilidade.</Empty>}</tbody>
+            <thead><tr><th>Código</th><th>Nome</th><th className="money">Feriados</th><th className="money">Noites</th><th className="money">Férias</th><th>Faltas justificadas</th><th>Notas</th></tr></thead>
+            <tbody>{dados.linhas.length ? dados.linhas.map((l, i) => (
+              <tr key={`${l.codigo}-${l.nome}`} className={l.noHorario ? '' : 'row-muted'}>
+                <td>{l.codigo ?? ''}</td>
+                <td>{l.nome}{!l.noHorario && <span className="muted small"> · não está no horário</span>}</td>
+                <td className="money" title={resumoDias(l.feriados)}>{l.feriados.length || ''}</td>
+                <td className="money">{l.noites || ''}</td>
+                <td className="money" title={resumoDias(l.ferias)}>{l.ferias.length || ''}</td>
+                <td>{l.faltas.length ? `${l.faltas.length} (dia ${resumoDias(l.faltas)})` : ''}</td>
+                <td><input value={l.nota} onChange={e => setNota(i, e.target.value)} placeholder="Sem notas" aria-label={`Notas de ${l.nome}`} style={{ width: '100%', minWidth: 220 }} /></td>
+              </tr>
+            )) : <Empty colSpan={7}>A folha da contabilidade não tem funcionários.</Empty>}</tbody>
           </table></div>
         </Panel>
       )}
