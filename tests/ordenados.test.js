@@ -27,6 +27,8 @@ async function horario() {
   ws.getCell(linha(5), 4).value = 'feriado'; ws.getCell(linha(5), 5).value = null
   // Fábio: folga (verde, vazio) a 10 e 11; noites nos restantes dias de outubro
   for (const d of [10, 11]) { ws.getCell(linha(d), 6).value = null; ws.getCell(linha(d), 7).value = null; ws.getCell(linha(d), 6).fill = fill('FF00CC33') }
+  // … e horário de dia a 20 e 27
+  for (const d of [20, 27]) { ws.getCell(linha(d), 6).value = 15; ws.getCell(linha(d), 7).value = 23 }
   // Mel não está na folha da contabilidade
   ws.getCell(linha(3), 8).value = 'Férias'
   // Férias em setembro (28/09) não contam para outubro
@@ -55,7 +57,8 @@ describe('ordenados para a contabilidade', () => {
     expect(d.codigos).toMatchObject({ ajudCusto: 130, feriado: 126, noites: 181, bxMedica: 416, bxParentalidade: 413, bxSeguro: 417, ferias: 170 })
     const [galina, fabio, patricia] = d.linhas
     expect(galina).toMatchObject({ codigo: 27, vencimento: 1150, feriados: [], noites: 0, ferias: [1, 2], faltas: [9], nota: '' })
-    expect(fabio).toMatchObject({ codigo: 124, vencimento: 920, feriados: [5], noites: 29, nota: 'Recepcionista nocturno' })
+    // Recepcionista nocturno: sem noites, com os dias de horário de dia nas notas
+    expect(fabio).toMatchObject({ codigo: 124, vencimento: 920, feriados: [5], noites: 0, diurnos: [20, 27], nota: 'Recepcionista nocturno. Horário diurno: 20, 27/10 (2 dias)' })
     expect(fabio.admissao).toBe('16/10/2025')
     expect(galina.admissao).toBe('1/1/2019')
     expect(patricia).toMatchObject({ vencimento: 3000, noHorario: false })
@@ -74,8 +77,8 @@ describe('ordenados para a contabilidade', () => {
     expect(ws.getRow(5).values.slice(1, 3)).toEqual([27, 'Galina Sabaeva'])
     expect(ws.getCell('K5').value).toBe(2)
     expect(ws.getCell('L5').value).toBe('Falta justificada a 9/10')
-    expect(ws.getCell('G6').value).toBe(29)
-    expect(ws.getCell('L6').value).toBe('Recepcionista nocturno')
+    expect(ws.getCell('G6').value).toBeNull()
+    expect(ws.getCell('L6').value).toBe('Recepcionista nocturno. Horário diurno: 20, 27/10 (2 dias)')
     expect(ws.getCell('L7').value).toBeNull()
     // Linhas alternadas: branco, cinza, branco
     expect(ws.getCell('A5').fill?.fgColor?.argb).toBeUndefined()

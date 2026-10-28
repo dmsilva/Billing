@@ -92,8 +92,9 @@ export function lerHorario(wb, ano, mes) {
 
   return {
     folha: ws.name,
+    mes,
     funcionarios: funcionarios.map(({ col, nome }) => {
-      const res = { nome, feriados: [], noites: 0, ferias: [], faltas: [] }
+      const res = { nome, feriados: [], noites: 0, diurnos: [], ferias: [], faltas: [] }
       for (const { r, data: d } of datas) {
         if (d.getUTCMonth() !== mes - 1 || d.getUTCFullYear() !== ano) continue
         const dia = d.getUTCDate()
@@ -106,14 +107,18 @@ export function lerHorario(wb, ano, mes) {
         const marcadoFeriado = ws.getRow(r).values.some(v => typeof v === 'string' && norm(v) === 'feriado')
         if (fer.has(iso(d)) || marcadoFeriado) res.feriados.push(dia)
         if (hi >= 22 && hf !== null && hf <= 8) res.noites++
+        else res.diurnos.push(dia)
       }
       return res
     }),
   }
 }
 
-// Notas que vão sempre na folha, seja qual for o mês (pelo primeiro nome). As outras notas escreve-as o Daniel na página.
-export const NOTAS_FIXAS = { fabio: 'Recepcionista nocturno' }
+// Recepcionistas nocturnos (pelo primeiro nome): a contabilidade já conta as noites deles,
+// por isso não se põem noites; a nota diz quais os dias em que fizeram horário de dia.
+// As outras notas escreve-as o Daniel na página.
+export const NOCTURNOS = ['fabio']
+const nocturno = nome => NOCTURNOS.includes(norm(nome).split(' ')[0])
 
 // "Galia" no horário corresponde a "Galina Sabaeva" na contabilidade.
 export function casarNome(nomeHorario, nomes) {
@@ -184,14 +189,18 @@ export function lerFolhaContabilidade(wb) {
 // Junta a folha da contabilidade ao horário do mês.
 export function montarOrdenados(folha, horario) {
   const linhas = folha.funcionarios.map(f => ({
-    ...f, feriados: [], noites: 0, ferias: [], faltas: [], noHorario: false,
-    nota: NOTAS_FIXAS[norm(f.nome).split(' ')[0]] || '',
+    ...f, feriados: [], noites: 0, diurnos: [], ferias: [], faltas: [], noHorario: false,
+    nocturno: nocturno(f.nome), nota: nocturno(f.nome) ? 'Recepcionista nocturno' : '',
   }))
   const semPar = []
   for (const h of horario.funcionarios) {
     const alvo = casarNome(h.nome, linhas)
     if (!alvo) { if (h.feriados.length || h.noites || h.ferias.length || h.faltas.length) semPar.push(h); continue }
-    Object.assign(alvo, { feriados: h.feriados, noites: h.noites, ferias: h.ferias, faltas: h.faltas, noHorario: true, nomeHorario: h.nome })
+    Object.assign(alvo, { feriados: h.feriados, noites: h.noites, diurnos: h.diurnos, ferias: h.ferias, faltas: h.faltas, noHorario: true, nomeHorario: h.nome })
+    if (alvo.nocturno) {
+      alvo.noites = 0
+      if (h.diurnos.length) alvo.nota = `Recepcionista nocturno. Horário diurno: ${h.diurnos.join(', ')}/${String(horario.mes).padStart(2, '0')} (${h.diurnos.length} ${h.diurnos.length === 1 ? 'dia' : 'dias'})`
+    }
   }
   return { linhas, semPar }
 }
