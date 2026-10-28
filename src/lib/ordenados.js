@@ -1,4 +1,4 @@
-import { alterarCelulas } from './xlsxPatch.js'
+import { parseMoney } from './money.js'
 
 // Preenche a folha "Ordenados para contabilidade" a partir do horário dos funcionários.
 // Horário: uma folha por mês ("Outubro 2026"), nomes na linha 1 (entrada/saída em duas colunas),
@@ -112,7 +112,7 @@ export function lerHorario(wb, ano, mes) {
   }
 }
 
-// Notas que vão sempre na folha, seja qual for o mês (pelo primeiro nome).
+// Notas que vão sempre na folha, seja qual for o mês (pelo primeiro nome). As outras notas escreve-as o Daniel na página.
 export const NOTAS_FIXAS = { fabio: 'Recepcionista nocturno' }
 
 // "Galia" no horário corresponde a "Galina Sabaeva" na contabilidade.
@@ -123,93 +123,88 @@ export function casarNome(nomeHorario, nomes) {
     || (a.length >= 4 ? nomes.find(n => { const b = primeiro(n.nome); return b.startsWith(a.slice(0, 4)) || a.startsWith(b.slice(0, 4)) }) : undefined)
 }
 
-export function preencherOrdenados(wbOrdenados, horario, ano, mes) {
-  const ws = wbOrdenados.worksheets.find(w => norm(w.name).includes('contabilidade'))
+// "€3.000.00" → 3000; "1150" → 1150.
+export function lerVencimento(v) {
+  if (typeof v === 'number') return v
+  const s = String(v ?? '').replace(/[^\d.,]/g, '')
+  const m = s.match(/^(.*)[.,](\d{2})$/)
+  return m ? Number(m[1].replace(/[.,]/g, '') + '.' + m[2]) : parseMoney(s)
+}
+
+// Data de admissão tal como aparece no Excel: as datas foram escritas dia/mês mas o Excel guardou-as
+// como mês/dia (ex.: "12/3/2026" fica 3 de dezembro), por isso mostra-se o texto como está à vista.
+export function lerData(v) {
+  if (v instanceof Date) return `${v.getUTCMonth() + 1}/${v.getUTCDate()}/${v.getUTCFullYear()}`
+  return v === null || v === undefined ? '' : String(v).trim()
+}
+
+// Lê a folha "para contabilidade": empresa, códigos das colunas (linha acima dos títulos) e funcionários.
+export function lerFolhaContabilidade(wb) {
+  const ws = wb.worksheets.find(w => norm(w.name).includes('contabilidade'))
   if (!ws) throw new Error('O Excel dos ordenados não tem a folha "para contabilidade".')
-  let hdrRow = null
+  let hdr = null
   const cols = {}
-  for (let r = 1; r <= Math.min(ws.rowCount, 15) && !hdrRow; r++) {
-    ws.getRow(r).eachCell((cell, col) => { const t = texto(cell); if (['feriado', 'noites', 'ferias', 'notas', 'nome'].includes(t)) cols[t] = col })
-    if (cols.feriado && cols.noites) hdrRow = r
+  for (let r = 1; r <= Math.min(ws.rowCount, 15) && !hdr; r++) {
+    ws.getRow(r).eachCell((cell, col) => { const t = texto(cell); if (['codigo', 'nome', 'feriado', 'noites', 'ferias', 'notas'].includes(t)) cols[t] = col })
+    if (cols.feriado && cols.noites) hdr = r
   }
-  if (!hdrRow || !cols.ferias || !cols.notas) throw new Error('Não encontrei as colunas Feriado, Noites, Ferias e Notas na folha da contabilidade.')
+  if (!hdr) throw new Error('Não encontrei as colunas Feriado e Noites na folha da contabilidade.')
   const nomeCol = cols.nome || 2
-  const nomes = []
-  for (let r = hdrRow + 1; r <= ws.rowCount; r++) {
-    const n = valor(ws.getCell(r, nomeCol))
-    if (typeof n === 'string' && n.trim()) nomes.push({ r, nome: n.trim() })
+  const codigoCol = cols.codigo || 1
+  const linhaAcima = ws.getRow(hdr - 1)
+  const venCol = [...Array(20).keys()].map(i => i + 1).find(c => texto(linhaAcima.getCell(c)).startsWith('venc')) || nomeCol + 1
+  const admCol = [...Array(20).keys()].map(i => i + 1).find(c => texto(linhaAcima.getCell(c)).startsWith('admiss')) || nomeCol + 2
+  // Códigos das rubricas (130 = Ajud. Custo, 126 = Feriado, …), na linha acima dos títulos.
+  const codigos = {}
+  linhaAcima.eachCell((cell, col) => { const v = valor(cell); if (typeof v === 'number') codigos[col] = v })
+  const ajud = Object.keys(codigos).map(Number).find(c => texto(ws.getCell(hdr, c)).startsWith('ajud'))
+  const titulo = c => texto(ws.getCell(hdr, c))
+  const codigoDe = pref => { const c = Object.keys(codigos).map(Number).find(col => titulo(col).replace(/[^a-z]/g, '').startsWith(pref)); return c ? codigos[c] : null }
+  const funcionarios = []
+  for (let r = hdr + 1; r <= ws.rowCount; r++) {
+    const nome = valor(ws.getCell(r, nomeCol))
+    if (typeof nome !== 'string' || !nome.trim()) continue
+    funcionarios.push({
+      codigo: valor(ws.getCell(r, codigoCol)) ?? null,
+      nome: nome.trim(),
+      vencimento: lerVencimento(valor(ws.getCell(r, venCol))),
+      admissao: lerData(valor(ws.getCell(r, admCol))),
+    })
   }
-  const alteracoes = [] // { linha, coluna, valor } a escrever no ficheiro original
-  const escrever = (linha, coluna, v) => alteracoes.push({ linha, coluna, valor: v })
-  escrever(2, nomeCol, `Mês: ${MESES[mes - 1][0].toUpperCase()}${MESES[mes - 1].slice(1)} ${ano}`)
-
-  const resumo = [], semPar = []
-  // As notas são refeitas todos os meses: as fixas e as do horário deste mês.
-  const notasPorLinha = new Map(nomes.map(n => [n.r, [NOTAS_FIXAS[norm(n.nome).split(' ')[0]]].filter(Boolean)]))
-  const dias = l => `${l.join(', ')}/${String(mes).padStart(2, '0')}`
-  for (const f of horario.funcionarios) {
-    const alvo = casarNome(f.nome, nomes)
-    const temAlgo = f.feriados.length || f.noites || f.ferias.length || f.faltas.length
-    if (!alvo) { if (temAlgo) semPar.push(f); continue }
-    escrever(alvo.r, cols.feriado, f.feriados.length || null)
-    escrever(alvo.r, cols.noites, f.noites || null)
-    escrever(alvo.r, cols.ferias, f.ferias.length || null)
-    const notas = []
-    if (f.feriados.length) notas.push(`Feriado trabalhado: ${dias(f.feriados)}`)
-    if (f.ferias.length) notas.push(`Férias: ${dias(f.ferias)}`)
-    if (f.faltas.length) notas.push(`Falta justificada (${f.faltas.length}): ${dias(f.faltas)}`)
-    notasPorLinha.get(alvo.r).push(...notas)
-    resumo.push({ ...f, nomeContabilidade: alvo.nome })
+  return {
+    empresa: String(valor(ws.getCell(1, nomeCol)) ?? '').trim(),
+    codigos: {
+      ajudCusto: ajud ? codigos[ajud] : codigoDe('ajud'), feriado: codigoDe('feriado'), noites: codigoDe('noites'),
+      bxMedica: codigoDe('bxmedica'), bxParentalidade: codigoDe('bxparental'), bxSeguro: codigoDe('bxseguro'), ferias: codigoDe('ferias'),
+    },
+    funcionarios,
   }
-  for (const [r, notas] of notasPorLinha) escrever(r, cols.notas, notas.join('; ') || null)
-  const ultimaColuna = Math.max(...[3, 4].flatMap(r => { const cs = []; ws.getRow(r).eachCell((c, col) => cs.push(col)); return cs }), cols.notas)
-  const ultimaLinha = nomes.length ? nomes[nomes.length - 1].r : hdrRow
-  return { folha: ws.name, resumo, semPar, alteracoes, ultimaColuna, ultimaLinha }
 }
 
-// Ficheiro só com a folha da contabilidade (cabeçalho e funcionários, colunas A até às Notas/IRS),
-// com o mesmo aspeto do Excel original: estilos, larguras, alturas e células unidas.
-export function folhaParaContabilidade(ExcelJS, wsOriginal, resultado, ano, mes) {
-  const { alteracoes, ultimaColuna, ultimaLinha } = resultado
-  const novos = new Map(alteracoes.map(a => [`${a.linha}:${a.coluna}`, a.valor]))
-  const wb = new ExcelJS.Workbook()
-  const ws = wb.addWorksheet(`${MESES[mes - 1][0].toUpperCase()}${MESES[mes - 1].slice(1)} ${ano}`)
-  for (let c = 1; c <= ultimaColuna; c++) {
-    const w = wsOriginal.getColumn(c).width
-    if (w) ws.getColumn(c).width = w
+// Junta a folha da contabilidade ao horário do mês.
+export function montarOrdenados(folha, horario) {
+  const linhas = folha.funcionarios.map(f => ({
+    ...f, feriados: [], noites: 0, ferias: [], faltas: [], noHorario: false,
+    nota: NOTAS_FIXAS[norm(f.nome).split(' ')[0]] || '',
+  }))
+  const semPar = []
+  for (const h of horario.funcionarios) {
+    const alvo = casarNome(h.nome, linhas)
+    if (!alvo) { if (h.feriados.length || h.noites || h.ferias.length || h.faltas.length) semPar.push(h); continue }
+    Object.assign(alvo, { feriados: h.feriados, noites: h.noites, ferias: h.ferias, faltas: h.faltas, noHorario: true, nomeHorario: h.nome })
   }
-  for (let r = 1; r <= ultimaLinha; r++) {
-    const orig = wsOriginal.getRow(r)
-    const row = ws.getRow(r)
-    if (orig.height) row.height = orig.height
-    for (let c = 1; c <= ultimaColuna; c++) {
-      const o = wsOriginal.getCell(r, c)
-      if (o.isMerged && o.master !== o) continue
-      const cell = ws.getCell(r, c)
-      cell.value = novos.has(`${r}:${c}`) ? novos.get(`${r}:${c}`) : o.value
-      cell.style = JSON.parse(JSON.stringify(o.style || {}))
-    }
-  }
-  for (const m of wsOriginal.model.merges || []) {
-    const [a, b] = m.split(':').map(ref => wsOriginal.getCell(ref))
-    if (b && b.row <= ultimaLinha && b.col <= ultimaColuna) ws.mergeCells(a.row, a.col, b.row, b.col)
-  }
-  ws.pageSetup = { paperSize: 9, orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0, horizontalCentered: true, showGridLines: true }
-  return wb
+  return { linhas, semPar }
 }
 
-export async function gerarOrdenados(ficheiroHorario, ficheiroOrdenados, ano, mes) {
+export async function lerOrdenados(ficheiroHorario, ficheiroOrdenados, ano, mes) {
   const { default: ExcelJS } = await import('exceljs')
   const wbH = new ExcelJS.Workbook()
   await wbH.xlsx.load(await ficheiroHorario.arrayBuffer())
   const wbO = new ExcelJS.Workbook()
   await wbO.xlsx.load(await ficheiroOrdenados.arrayBuffer())
   const horario = lerHorario(wbH, ano, mes)
-  const resultado = preencherOrdenados(wbO, horario, ano, mes)
-  // Escreve só as células alteradas no ficheiro original, para não perder formatação nem fórmulas.
-  const buffer = await alterarCelulas(await ficheiroOrdenados.arrayBuffer(), resultado.folha, resultado.alteracoes)
-  const contabilidade = await folhaParaContabilidade(ExcelJS, wbO.getWorksheet(resultado.folha), resultado, ano, mes).xlsx.writeBuffer()
-  return { ...resultado, folhaHorario: horario.folha, buffer, contabilidade }
+  const folha = lerFolhaContabilidade(wbO)
+  return { ...folha, ...montarOrdenados(folha, horario), folhaHorario: horario.folha, ano, mes }
 }
 
 export async function lerMesesDoFicheiro(ficheiro) {
@@ -217,4 +212,108 @@ export async function lerMesesDoFicheiro(ficheiro) {
   const wb = new ExcelJS.Workbook()
   await wb.xlsx.load(await ficheiro.arrayBuffer())
   return mesesDoHorario(wb)
+}
+
+export const nomeMes = (ano, mes) => `${MESES[mes - 1][0].toUpperCase()}${MESES[mes - 1].slice(1)} ${ano}`
+
+// Colunas do ficheiro para a contabilidade (iguais às da folha original).
+export const COLUNAS = [
+  { titulo: 'Codigo', largura: 9, mm: 13, campo: 'codigo' },
+  { titulo: 'Nome', largura: 38, mm: 58, campo: 'nome', esquerda: true },
+  { titulo: 'Venc.', largura: 12, mm: 20, campo: 'vencimento' },
+  { titulo: 'Data', cima: 'Admissão', largura: 12, mm: 19, campo: 'admissao' },
+  { titulo: 'Ajud. Custo', codigo: 'ajudCusto', largura: 11, mm: 17 },
+  { titulo: 'Feriado', codigo: 'feriado', largura: 9, mm: 14, campo: l => l.feriados.length || null },
+  { titulo: 'Noites', codigo: 'noites', largura: 9, mm: 14, campo: l => l.noites || null },
+  { titulo: 'Bx. Médica', codigo: 'bxMedica', largura: 11, mm: 17 },
+  { titulo: 'Bx. Parentalid.', codigo: 'bxParentalidade', largura: 14, mm: 21 },
+  { titulo: 'Bx. Seguro', codigo: 'bxSeguro', largura: 11, mm: 17 },
+  { titulo: 'Férias', codigo: 'ferias', largura: 9, mm: 13, campo: l => l.ferias.length || null },
+  { titulo: 'Notas', largura: 45, campo: 'nota', esquerda: true },
+  { titulo: 'IRS', largura: 9, mm: 11 },
+]
+
+const valorDe = (l, c) => (typeof c.campo === 'function' ? c.campo(l) : c.campo ? l[c.campo] : null)
+const AZUL_CAB = 'FF99CCFF', CINZA = 'FFE5E5E5', BORDA = 'FF9AA5B1'
+const fmtEuro = v => (v === null || v === undefined ? '' : `${v.toLocaleString('pt-PT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`)
+
+export async function gerarExcel(dados) {
+  const { default: ExcelJS } = await import('exceljs')
+  const wb = new ExcelJS.Workbook()
+  const ws = wb.addWorksheet(nomeMes(dados.ano, dados.mes), { views: [{ state: 'frozen', ySplit: 4 }] })
+  COLUNAS.forEach((c, i) => { ws.getColumn(i + 1).width = c.largura })
+  const n = COLUNAS.length
+  const borda = { style: 'thin', color: { argb: BORDA } }
+  const bordas = { top: borda, left: borda, bottom: borda, right: borda }
+
+  ws.mergeCells(1, 1, 1, n)
+  Object.assign(ws.getCell(1, 1), { value: dados.empresa, font: { bold: true, size: 14 } })
+  ws.mergeCells(2, 1, 2, n)
+  Object.assign(ws.getCell(2, 1), { value: `Ordenados de ${nomeMes(dados.ano, dados.mes)}`, font: { size: 11, color: { argb: 'FF555555' } } })
+  ws.getRow(1).height = 22
+
+  COLUNAS.forEach((c, i) => {
+    const cima = ws.getCell(3, i + 1)
+    cima.value = c.cima || (c.codigo ? dados.codigos[c.codigo] ?? null : null)
+    const tit = ws.getCell(4, i + 1)
+    tit.value = c.titulo
+    for (const cell of [cima, tit]) {
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: AZUL_CAB } }
+      cell.font = { bold: true }
+      cell.alignment = { horizontal: c.esquerda ? 'left' : 'center', vertical: 'middle' }
+      cell.border = bordas
+    }
+  })
+
+  dados.linhas.forEach((l, k) => {
+    const r = 5 + k
+    const row = ws.getRow(r)
+    row.height = 18
+    COLUNAS.forEach((c, i) => {
+      const cell = row.getCell(i + 1)
+      const v = valorDe(l, c)
+      cell.value = v === '' || v === undefined ? null : v
+      if (c.campo === 'vencimento') cell.numFmt = '#,##0.00 "€"'
+      cell.alignment = { horizontal: c.esquerda ? 'left' : 'center', vertical: 'middle', wrapText: c.campo === 'nota' }
+      if (c.campo === 'vencimento') cell.alignment = { horizontal: 'right', vertical: 'middle' }
+      cell.border = bordas
+      if (k % 2 === 1) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: CINZA } }
+    })
+  })
+  ws.pageSetup = { paperSize: 9, orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0, horizontalCentered: true, margins: { left: 0.4, right: 0.4, top: 0.5, bottom: 0.5, header: 0.2, footer: 0.2 } }
+  return wb.xlsx.writeBuffer()
+}
+
+export async function gerarPdf(dados) {
+  const [{ jsPDF }, { default: autoTable }] = await Promise.all([import('jspdf'), import('jspdf-autotable')])
+  const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' })
+  doc.setFontSize(13); doc.setFont('helvetica', 'bold')
+  doc.text(dados.empresa, 10, 12)
+  doc.setFontSize(10); doc.setFont('helvetica', 'normal')
+  doc.text(`Ordenados de ${nomeMes(dados.ano, dados.mes)}`, 10, 18)
+  const formatar = (l, c) => {
+    const v = valorDe(l, c)
+    if (c.campo === 'vencimento') return fmtEuro(v)
+    return v === null || v === undefined ? '' : String(v)
+  }
+  const azul = [153, 204, 255]
+  autoTable(doc, {
+    startY: 22,
+    head: [
+      COLUNAS.map(c => c.cima || (c.codigo ? String(dados.codigos[c.codigo] ?? '') : '')),
+      COLUNAS.map(c => c.titulo),
+    ],
+    body: dados.linhas.map(l => COLUNAS.map(c => formatar(l, c))),
+    theme: 'grid',
+    styles: { fontSize: 8, cellPadding: 1.4, lineColor: [154, 165, 177], lineWidth: 0.1, textColor: 20, halign: 'center', valign: 'middle' },
+    headStyles: { fillColor: azul, textColor: 20, fontStyle: 'bold' },
+    // Branco, cinza, branco… como no Excel.
+    didParseCell: h => { if (h.section === 'body') h.cell.styles.fillColor = h.row.index % 2 ? [229, 229, 229] : [255, 255, 255] },
+    columnStyles: Object.fromEntries(COLUNAS.map((c, i) => [i, {
+      cellWidth: c.mm ?? 'auto',
+      halign: c.esquerda ? 'left' : c.campo === 'vencimento' ? 'right' : 'center',
+    }])),
+    margin: { left: 10, right: 10 },
+  })
+  return doc.output('arraybuffer')
 }
