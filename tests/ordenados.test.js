@@ -62,7 +62,7 @@ describe('ordenados para a contabilidade', () => {
     // Fábio: 31 dias − 2 folgas = 29 noites; trabalhou no feriado de 5/10
     expect(ws.getCell('F6').value).toBe(1)
     expect(ws.getCell('G6').value).toBe(29)
-    expect(ws.getCell('L6').value).toBe('nota antiga; Feriado trabalhado: 5/10')
+    expect(ws.getCell('L6').value).toBe('Recepcionista nocturno; Feriado trabalhado: 5/10')
     // Patrícia não está no horário: fica em branco
     expect(ws.getCell('F7').value).toBeNull()
     expect(ws.getCell('B2').value).toBe('Mês: Outubro 2026')
@@ -71,6 +71,21 @@ describe('ordenados para a contabilidade', () => {
     expect(ws.getCell('C8').value.formula).toBe('SUM(C5:C7)')
     expect(wb.getWorksheet('Ordenados_Chalet').getCell('A1').value).toBe('PT50 0000')
     expect(r.semPar.map(f => f.nome)).toEqual(['Mel'])
+  })
+
+  it('cria o ficheiro para a contabilidade só com a folha preenchida e o mesmo aspeto', async () => {
+    const r = await gerarOrdenados(await horario(), await ordenados(), 2026, 10)
+    const wb = new ExcelJS.Workbook()
+    await wb.xlsx.load(r.contabilidade)
+    expect(wb.worksheets.map(w => w.name)).toEqual(['Outubro 2026'])
+    const ws = wb.worksheets[0]
+    expect(ws.getCell('A4').value).toBe('Codigo')
+    expect(ws.getCell('B5').value).toBe('Galina Sabaeva')
+    expect(ws.getCell('K5').value).toBe(2)
+    expect(ws.getCell('G6').value).toBe(29)
+    expect(ws.getCell('L6').value).toBe('Recepcionista nocturno; Feriado trabalhado: 5/10')
+    expect(ws.getCell('F5').fill.fgColor.argb).toBe('FFCCCCCC')
+    expect(ws.rowCount).toBe(7)
   })
 
   it('avisa quando falta a folha do mês', async () => {
