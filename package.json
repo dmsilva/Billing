@@ -17,6 +17,8 @@
     "@anthropic-ai/sdk": "0.136.0",
     "@electric-sql/pglite": "0.5.8",
     "@supabase/supabase-js": "^2.49.0",
+    "exceljs": "^4.4.0",
+    "fflate": "^0.8.2",
     "pdfjs-dist": "6.3.289",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",

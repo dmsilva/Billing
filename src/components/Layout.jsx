@@ -24,6 +24,7 @@ export const PAGES = [
   { path: '/categorias', label: 'Categorias', icon: '◈', title: 'Categorias', sub: 'Despesas por categoria · CGD e numerário' },
   { path: '/editar-categorias', label: 'Editar categorias', icon: '⚙', title: 'Editar categorias', sub: 'Classificação das saídas CGD' },
   { section: 'ADMINISTRAÇÃO' },
+  { path: '/ordenados', label: 'Ordenados', icon: '☷', title: 'Ordenados', sub: 'Folha para a contabilidade a partir do horário' },
   { path: '/utilizadores', label: 'Utilizadores', icon: '☺', title: 'Utilizadores', sub: 'Acessos da administradora e da receção' },
   { path: '/configuracao', label: 'Dados e migração', icon: '⛁', title: 'Dados e migração', sub: 'Validação dos dados migrados e importação do navegador antigo' },
 ]
