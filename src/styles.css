@@ -302,3 +302,4 @@ td.wrap{white-space:normal;min-width:180px}
 .supplier-summary{margin-bottom:12px}.supplier-summary .total-row td{border-top:2px solid var(--line)}a.btn-link{display:inline-flex;align-items:center;text-decoration:none}
 .proof-cell{display:inline-flex;gap:10px;align-items:center;white-space:nowrap}.proof-cell label{cursor:pointer}
 .payment-invoices>td{background:var(--soft,#f6f8fc);padding:8px 12px 12px}
+.tab-count{display:inline-block;min-width:20px;margin-left:6px;padding:0 6px;border-radius:9px;background:rgba(0,0,0,.07);font-size:12px}.tabs button.on .tab-count{background:rgba(255,255,255,.25)}

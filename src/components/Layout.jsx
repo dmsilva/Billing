@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
+import AutoConferencia from './AutoConferencia'
 import { useAuth } from '../auth/AuthProvider'
 import { useData } from '../data/DataProvider'
 import { localMode } from '../supabase'
@@ -16,9 +17,7 @@ export const PAGES = [
   { path: '/conferencia', label: 'Conferência', icon: '✓', title: 'Conferência', sub: 'CV → MB → Numerário → próximo envelope' },
   { section: 'MOVIMENTOS' },
   { path: '/movimentos', label: 'CGD / Extrato', icon: '▤', title: 'CGD / Extrato', sub: 'Todas as saídas da conta bancária CGD' },
-  { path: '/faturas', label: 'Faturas', icon: '▧', title: 'Faturas', sub: 'Documentos, ficheiros originais e linhas de produtos' },
-  { path: '/numerario', label: 'Numerário', icon: '◉', title: 'Numerário', sub: 'Faturas e recibos pagos em dinheiro' },
-  { path: '/recebidas', label: 'Recebidas', icon: '✉', title: 'Faturas recebidas', sub: 'Enviadas pela receção · por validar', badge: 'recebidas' },
+  { path: '/faturas', label: 'Faturas', icon: '▧', title: 'Faturas', sub: 'Receção, numerário e conferência com o extrato', badge: 'recebidas' },
   { path: '/por-liquidar', label: 'Por liquidar', icon: '🕓', title: 'Por liquidar', sub: 'Faturas por pagar e pagamentos agrupados', badge: 'por-liquidar' },
   { section: 'ANÁLISE' },
   { path: '/produtos', label: 'Produtos', icon: '◌', title: 'Produtos', sub: 'Consumo e gasto por artigo' },
@@ -56,7 +55,7 @@ export default function Layout() {
   const loc = useLocation()
   const nav = useNavigate()
   const page = pageFor(loc.pathname)
-  const pendingReceived = invoices.filter(i => i.origem === 'rececao' && i.estado === 'Por validar').length
+  const pendingReceived = invoices.filter(i => i.estado === 'Por validar').length
   const unpaid = invoices.filter(isUnpaid).length
   const unallocated = transferencias.filter(t => !t.alocada_em).length
 
@@ -96,6 +95,7 @@ export default function Layout() {
           </div>
           <button className="primary" onClick={() => nav('/faturas/nova')}>+ Adicionar fatura</button>
         </div>
+        <AutoConferencia />
         {localMode && <LocalBanner />}
         {error && <div className="notice bad">Erro ao comunicar com o Supabase: {error}</div>}
         {loading ? <div className="notice">A carregar dados…</div> : <Outlet />}
