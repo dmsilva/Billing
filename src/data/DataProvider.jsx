@@ -25,6 +25,9 @@ const TABLES = {
   transferencias: { select: '*', order: 'data', optional: true },
   // Só existe depois de executar supabase/07_encargos_pessoal.sql.
   encargos_pessoal: { select: '*', order: 'mes', optional: true },
+  // Só existem depois de executar supabase/08_saft.sql.
+  saft_documentos: { select: '*', order: 'data', optional: true },
+  saft_imports: { select: '*', order: 'importado_em', ascending: false, optional: true },
 }
 
 const PAGE = 1000
@@ -123,7 +126,7 @@ export function DataProvider({ children }) {
     }
   }, [state])
 
-  const value = { ...state, ...derived, paymentsReady: !missing.includes('invoice_payments'), creditsReady: !missing.includes('bank_credits') && !missing.includes('transferencias'), encargosReady: !missing.includes('encargos_pessoal'), loading, error, online, reload, reloadAll, upsertLocal, removeLocal }
+  const value = { ...state, ...derived, paymentsReady: !missing.includes('invoice_payments'), creditsReady: !missing.includes('bank_credits') && !missing.includes('transferencias'), encargosReady: !missing.includes('encargos_pessoal'), saftReady: !missing.includes('saft_documentos') && !missing.includes('saft_imports'), loading, error, online, reload, reloadAll, upsertLocal, removeLocal }
   return <DataContext.Provider value={value}>{children}</DataContext.Provider>
 }
 

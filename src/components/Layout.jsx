@@ -13,6 +13,7 @@ export const PAGES = [
   { path: '/analise', label: 'Análise', icon: '◔', title: 'Análise', sub: 'Por fornecedor, categoria, produto e imóvel' },
   { path: '/perguntar', label: 'Perguntar', icon: '?', title: 'Perguntar', sub: 'Pergunta em linguagem normal e recebe a resposta com os dados reais' },
   { section: 'ENTRADAS' },
+  { path: '/saft', label: 'SAF-T (faturado)', icon: '§', title: 'SAF-T', sub: 'Faturado oficial contra a caixa diária e o banco · o que não bate' },
   { path: '/caixa', label: 'Caixa diária', icon: '▣', title: 'Caixa diária', sub: 'Fechos dos colaboradores · 7h · 15h · 23h' },
   { path: '/entradas', label: 'Entradas no banco', icon: '↘', title: 'Entradas no banco', sub: 'Expedia, Stripe, transferências de hóspedes · transferências da receção', badge: 'transferencias' },
   { path: '/conferencia', label: 'Conferência', icon: '✓', title: 'Conferência', sub: 'CV → MB → Numerário → próximo envelope' },
