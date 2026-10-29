@@ -49,8 +49,8 @@ export const TABELAS = {
   },
   produtos: {
     tabela: 'invoice_lines', data: 'data',
-    colunas: ['id', 'invoice_id', 'produto', 'unidade', 'quantidade', 'valor', 'tipo', 'fornecedor', 'data', 'observacao'],
-    descricao: 'Linhas de produtos das faturas/talões (tipo: Pequeno-almoço, Limpeza, Bebidas…).',
+    colunas: ['id', 'invoice_id', 'produto', 'artigo', 'unidade', 'quantidade', 'valor', 'tipo', 'fornecedor', 'data', 'observacao'],
+    descricao: 'Linhas de produtos das faturas/talões. artigo = produto genérico sem marca (Manteiga, Leite, Detergente da loiça…), para somar o gasto por produto; tipo = categoria larga (Pequeno-almoço, Limpeza, Bebidas…). A data pode faltar: usar a da fatura (invoice_id).',
   },
   categorias: {
     tabela: 'categories', data: null,

@@ -315,3 +315,6 @@ td.wrap{white-space:normal;min-width:180px}
 .chat-input{display:flex;gap:10px;align-items:flex-end;margin-top:12px}
 .chat-input textarea{flex:1;min-height:52px;resize:vertical;border:1px solid #dbe2ec;border-radius:12px;padding:10px 12px;font:inherit;background:#fbfcfe;color:var(--text)}
 @media(max-width:700px){.chat-input{flex-direction:column;align-items:stretch}.chat-msg{max-width:100%}}
+/* Produtos: gasto por artigo */
+.inline-field{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--muted)}.inline-field input{min-width:0}
+tr.selected td{background:#eef4ff}.inline-edit .cell{min-width:140px}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { applyReading, fileType, normalizeReading } from '../src/lib/invoiceReading.js'
+import { applyReading, fileType, linesToRows, normalizeLines, normalizeReading, readingPrompt, READING_PROMPT } from '../src/lib/invoiceReading.js'
 import { contentBlocks, readInvoice } from '../netlify/functions/ler-fatura.mjs'
 import { validateFile } from '../src/data/files.js'
 
@@ -22,9 +22,9 @@ describe('tipo de ficheiro', () => {
 describe('normalizeReading', () => {
   it('só aceita valores com formato válido', () => {
     expect(normalizeReading({ fornecedor: '  Pingo   Doce ', nif: 'PT 500 829 993', data: '2026-10-18', documento: 'FS 1/23', valor_total: 12.345, iva: 1.2 }))
-      .toEqual({ fornecedor: 'Pingo Doce', nif: '500829993', data: '2026-10-18', documento: 'FS 1/23', valor_total: 12.35, iva: 1.2, pagamento: null, cliente: null, descricao: null })
+      .toEqual({ fornecedor: 'Pingo Doce', nif: '500829993', data: '2026-10-18', documento: 'FS 1/23', valor_total: 12.35, iva: 1.2, pagamento: null, cliente: null, descricao: null, linhas: [] })
     expect(normalizeReading({ data: '2026-02-30', nif: '123', valor_total: -4, iva: 'abc' }))
-      .toEqual({ fornecedor: null, nif: null, data: null, documento: null, valor_total: null, iva: null, pagamento: null, cliente: null, descricao: null })
+      .toEqual({ fornecedor: null, nif: null, data: null, documento: null, valor_total: null, iva: null, pagamento: null, cliente: null, descricao: null, linhas: [] })
     expect(normalizeReading(null).fornecedor).toBeNull()
   })
 })
@@ -108,5 +108,43 @@ describe('erros da Anthropic', () => {
     expect(friendlyClaudeError({ status: 400, message: 'Your credit balance is too low to access the Anthropic API.' })).toMatch(/saldo/)
     expect(friendlyClaudeError({ status: 401, message: 'invalid x-api-key' })).toMatch(/não é válida/)
     expect(friendlyClaudeError({ status: 529, message: 'Overloaded' })).toMatch(/indisponível/)
+  })
+})
+
+describe('linhas de artigos', () => {
+  it('normaliza as linhas lidas', () => {
+    expect(normalizeLines([
+      { produto: ' MANTEIGA  MIMOSA 250G ', artigo: 'manteiga', tipo: 'Laticínios', quantidade: '4', unidade: 'un', valor: 9.564 },
+      { produto: 'Desconto cartão', artigo: 'Desconto', tipo: 'Inventado', quantidade: null, unidade: null, valor: -1.5 },
+      { produto: '', artigo: 'X', tipo: 'Outros', valor: 1 },
+      { produto: 'Lixívia', artigo: '', tipo: 'Limpeza', quantidade: -2, valor: 'abc' },
+    ])).toEqual([
+      { produto: 'MANTEIGA MIMOSA 250G', artigo: 'Manteiga', tipo: 'Laticínios', quantidade: 4, unidade: 'un', valor: 9.56 },
+      { produto: 'Desconto cartão', artigo: 'Desconto', tipo: 'Outros', quantidade: null, unidade: null, valor: -1.5 },
+      { produto: 'Lixívia', artigo: 'Lixívia', tipo: 'Limpeza', quantidade: null, unidade: null, valor: null },
+    ])
+    expect(normalizeLines(null)).toEqual([])
+    expect(normalizeReading({ linhas: [{ produto: 'Leite', artigo: 'Leite', tipo: 'Laticínios', valor: 0.89 }] }).linhas).toHaveLength(1)
+  })
+  it('prepara as linhas para gravar na fatura', () => {
+    expect(linesToRows([{ produto: 'Leite UHT', artigo: 'Leite', tipo: 'Laticínios', quantidade: 6, unidade: 'L', valor: 5.34 }], { id: 7, fornecedor: 'Makro', data: '2026-10-20' }))
+      .toEqual([{ produto: 'Leite UHT', artigo: 'Leite', tipo: 'Laticínios', quantidade: 6, unidade: 'L', valor: 5.34, invoice_id: 7, fornecedor: 'Makro', data: '2026-10-20', lido_auto: true }])
+  })
+  it('junta à instrução os artigos já usados', () => {
+    expect(readingPrompt([])).toBe(READING_PROMPT)
+    expect(readingPrompt(['Manteiga', 'Leite', 'Manteiga'])).toMatch(/Artigos já usados.*: Manteiga; Leite$/)
+  })
+  it('a função pede as linhas e envia os artigos conhecidos', async () => {
+    const calls = []
+    const supabase = {
+      auth: { getUser: async () => ({ data: { user: { id: 'u1' } } }) },
+      from: () => ({ select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: { role: 'admin' } }) }) }) }),
+      rpc: async name => ({ data: name === 'artigos_conhecidos' ? ['Manteiga'] : null }),
+    }
+    const reply = { stop_reason: 'end_turn', content: [{ type: 'text', text: JSON.stringify({ linhas: [{ produto: 'MANTEIGA 250G', artigo: 'Manteiga', tipo: 'Laticínios', quantidade: 2, unidade: 'un', valor: 4.78 }] }) }] }
+    const r = await readInvoice({ supabase, anthropic: { messages: { create: async p => { calls.push(p); return reply } } }, token: 'ok', body: { files: [{ media_type: 'image/jpeg', data: 'AAAA' }] } })
+    expect((await r.json()).leitura.linhas).toEqual([{ produto: 'MANTEIGA 250G', artigo: 'Manteiga', tipo: 'Laticínios', quantidade: 2, unidade: 'un', valor: 4.78 }])
+    expect(calls[0].output_config.format.schema.required).toContain('linhas')
+    expect(calls[0].messages[0].content.at(-1).text).toMatch(/Artigos já usados.*Manteiga/)
   })
 })

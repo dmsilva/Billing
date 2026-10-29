@@ -1,8 +1,8 @@
-// Lê a foto ou o PDF de uma fatura e devolve fornecedor, NIF, data, nº e valores.
+// Lê a foto ou o PDF de uma fatura e devolve fornecedor, NIF, data, nº, valores e as linhas de artigos.
 // Corre no servidor do Netlify: a ANTHROPIC_API_KEY nunca chega ao navegador.
 import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@supabase/supabase-js'
-import { READING_PROMPT, READING_SCHEMA, normalizeReading } from '../../src/lib/invoiceReading.js'
+import { READING_SCHEMA, normalizeReading, readingPrompt } from '../../src/lib/invoiceReading.js'
 
 const json = (status, body) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })
 
@@ -54,13 +54,20 @@ export async function readInvoice({ supabase, anthropic, token, body, model = 'c
   const { blocks, error } = contentBlocks(body?.files)
   if (error) return json(400, { error })
 
+  // Nomes de artigos já usados (só existe depois do supabase/11_artigos_faturas.sql).
+  let artigos = []
+  try {
+    const { data } = await supabase.rpc('artigos_conhecidos')
+    if (Array.isArray(data)) artigos = data
+  } catch { /* sem a função a leitura funciona na mesma */ }
+
   let msg
   try {
     msg = await anthropic.messages.create({
       model,
-      max_tokens: 4000,
+      max_tokens: 16000,
       output_config: { effort: 'low', format: { type: 'json_schema', schema: READING_SCHEMA } },
-      messages: [{ role: 'user', content: [...blocks, { type: 'text', text: READING_PROMPT }] }],
+      messages: [{ role: 'user', content: [...blocks, { type: 'text', text: readingPrompt(artigos) }] }],
     })
   } catch (err) {
     console.error('ler-fatura: erro da Anthropic', err?.status, err?.message)
