@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { Empty, Panel, useToast } from '../components/ui'
-import { gerarExcel, gerarPdf, lerMesesDoFicheiro, lerOrdenados, nomeMes } from '../lib/ordenados'
+import { gerarExcel, gerarPdf, lerMesesDoFicheiro, lerOrdenados, MESES, nomeMes } from '../lib/ordenados'
+import { conferirRecibos, lerRecibos, preencherFolhaBanco } from '../lib/recibos'
+import { euro } from '../lib/money'
 
 const XLSX_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
 
@@ -22,6 +24,8 @@ export default function Ordenados() {
   const [mes, setMes] = useState('')
   const [busy, setBusy] = useState(false)
   const [dados, setDados] = useState(null)
+  const [pdf, setPdf] = useState(null)
+  const [recibos, setRecibos] = useState(null)
 
   async function escolherHorario(file) {
     setHorario(file); setDados(null)
@@ -46,6 +50,29 @@ export default function Ordenados() {
       .finally(() => { if (ativo) setBusy(false) })
     return () => { ativo = false }
   }, [horario, ordenados, mes, toast])
+
+  useEffect(() => {
+    if (!pdf) return
+    let ativo = true
+    lerRecibos(pdf)
+      .then(r => { if (ativo) setRecibos(r) })
+      .catch(e => { if (ativo) { setRecibos(null); toast(`Não consegui ler o PDF: ${e.message}`, 'bad') } })
+    return () => { ativo = false }
+  }, [pdf, toast])
+
+  const conferencia = dados && recibos ? conferirRecibos(recibos, dados.linhas) : null
+  const comProblemas = conferencia ? conferencia.linhas.filter(l => l.problemas.length) : []
+
+  async function baixarFolhaBanco() {
+    setBusy(true)
+    try {
+      const mesNome = MESES[dados.mes - 1][0].toUpperCase() + MESES[dados.mes - 1].slice(1)
+      const { ficheiro, semRecibo } = await preencherFolhaBanco(await ordenados.arrayBuffer(), recibos, mesNome)
+      descarregar(ficheiro, `Ordenados_Chalet_${mesNome}_${dados.ano}.xlsx`, XLSX_TYPE)
+      if (semRecibo.length) toast(`Sem recibo, ficaram sem valor: ${semRecibo.join(', ')}.`, 'bad')
+    } catch (e) { toast(e.message, 'bad') }
+    setBusy(false)
+  }
 
   const setNota = (i, nota) => setDados(d => ({ ...d, linhas: d.linhas.map((l, k) => (k === i ? { ...l, nota } : l)) }))
   const base = dados ? `Ordenados_contabilidade_${nomeMes(dados.ano, dados.mes).replace(' ', '_')}` : ''
@@ -98,6 +125,37 @@ export default function Ordenados() {
               </tr>
             )) : <Empty colSpan={7}>A folha da contabilidade não tem funcionários.</Empty>}</tbody>
           </table></div>
+        </Panel>
+      )}
+      {dados && (
+        <Panel title="Recibos do contabilista" hint="Quando chegarem os recibos em PDF, envia-os aqui. Conferimos os feriados, as noites, as faltas e o vencimento base com o que foi enviado e preenchemos a folha Ordenados_Chalet com o valor pago, pronta para exportar em CSV para o banco."
+          actions={recibos && <button className="primary" disabled={busy} onClick={baixarFolhaBanco}>Descarregar Ordenados_Chalet</button>}>
+          <div className="actions">
+            <label className="file-button"><input type="file" accept=".pdf" onChange={e => { if (e.target.files[0]) { setPdf(e.target.files[0]); setRecibos(null) } }} />{pdf ? `Recibos: ${pdf.name}` : '3. Escolher o PDF dos recibos'}</label>
+          </div>
+          {conferencia && (
+            <>
+              {comProblemas.length
+                ? <div className="notice bad">O contabilista não bate certo em {comProblemas.length === 1 ? '1 pessoa' : `${comProblemas.length} pessoas`}: {comProblemas.map(l => l.linha.nome).join(', ')}.</div>
+                : <div className="notice ok">Está tudo certo: feriados, noites, faltas e vencimentos batem com o que foi enviado.</div>}
+              {conferencia.semLinha.length > 0 && <div className="notice warn">Recibos de quem não está na folha da contabilidade: {conferencia.semLinha.map(r => r.nome).join(', ')}.</div>}
+              <div className="tablewrap"><table className="mini-table">
+                <thead><tr><th>Nome</th><th className="money">Feriados</th><th className="money">Noites</th><th className="money">Faltas</th><th className="money">Venc. base</th><th className="money">Valor pago</th><th>Conferência</th></tr></thead>
+                <tbody>{conferencia.linhas.map(({ linha, recibo, pago, problemas }) => (
+                  <tr key={`${linha.codigo}-${linha.nome}`}>
+                    <td>{linha.nome}</td>
+                    <td className="money">{pago ? pago.feriados : ''}</td>
+                    <td className="money">{pago ? (linha.nocturno ? '—' : pago.noites) : ''}</td>
+                    <td className="money">{pago ? pago.faltas : ''}</td>
+                    <td className="money">{pago?.vencimento != null ? euro(pago.vencimento) : ''}</td>
+                    <td className="money">{recibo?.pago != null ? euro(recibo.pago) : ''}</td>
+                    <td className={problemas.length ? 'bad' : 'ok'}>{problemas.length ? problemas.join(' ') : 'Certo'}</td>
+                  </tr>
+                ))}</tbody>
+                <tfoot><tr><td colSpan={5}>Total pago</td><td className="money">{euro(conferencia.total)}</td><td /></tr></tfoot>
+              </table></div>
+            </>
+          )}
         </Panel>
       )}
     </>
