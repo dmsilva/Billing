@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import ExcelJS from 'exceljs'
-import { conferirRecibos, lerRecibosDeLinhas, noitesDoSubsidio, numero, preencherFolhaBanco } from '../src/lib/recibos.js'
+import { conferirRecibos, lerRecibosDeLinhas, mesDosRecibos, noitesDoSubsidio, numero, preencherFolhaBanco } from '../src/lib/recibos.js'
 
 // Linhas de texto como saem do PDF do contabilista (dados fictícios).
 const recibo = (via, cod, nome, base, itens, pago) => [
@@ -35,6 +35,7 @@ describe('recibos de remunerações', () => {
     expect(numero('3 , 000 . 00')).toBe(3000)
     expect(numero('11 . 43D')).toBe(11.43)
     expect([4.29, 10, 11.43, 20].map(noitesDoSubsidio)).toEqual([3, 7, 8, 14])
+    expect(mesDosRecibos(linhasPdf)).toEqual({ ano: 2026, mes: 10 })
   })
 
   it('avisa quando o recibo não bate com o que foi enviado', () => {
@@ -73,6 +74,12 @@ describe('recibos de remunerações', () => {
     const out = await preencherFolhaBanco(await wb.xlsx.writeBuffer(), lerRecibosDeLinhas(linhasPdf), 'Outubro')
     expect(out.semRecibo).toEqual(['Marta Sousa'])
     expect(out.semLinha).toEqual([])
+    // CSV para o banco: só quem tem recibo, com as colunas da folha
+    expect(out.csv).toBe([
+      'PT50 0000 0000 0000 0000 0000 1,Ana Silva,BICXPTPL,1193.72,Ana Silva Ordenado Outubro,Outubro,check',
+      'LT00 0000 0000 0000 0003,Rui Costa,BICXLT2X,1288.92,Rui Costa Ordenado Outubro,Outubro,',
+      '',
+    ].join('\r\n'))
     const lido = new ExcelJS.Workbook()
     await lido.xlsx.load(out.ficheiro)
     const f = lido.getWorksheet('Ordenados_Chalet')

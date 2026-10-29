@@ -1,4 +1,4 @@
-import { casarNome, norm } from './ordenados.js'
+import { casarNome, MESES, norm } from './ordenados.js'
 import { alterarCelulas } from './xlsxPatch.js'
 import { sum } from './money.js'
 
@@ -63,6 +63,16 @@ export function lerRecibosDeLinhas(linhas) {
   return recibos
 }
 
+// Mês dos recibos, pela data no cabeçalho ("28 de Outubro de 2026").
+export function mesDosRecibos(linhas) {
+  for (const l of linhas) {
+    const m = norm(l).match(/^\d{1,2} de ([a-z]+) de (\d{4})$/)
+    const mes = m ? MESES.map(x => norm(x)).indexOf(m[1]) + 1 : 0
+    if (mes) return { ano: Number(m[2]), mes }
+  }
+  return null
+}
+
 export async function lerRecibos(ficheiro, pdfjs) {
   const { pdfTextItems } = await import('./pdfLoader.js')
   const { toLines, toWords } = await import('./pdfStatement.js')
@@ -70,7 +80,7 @@ export async function lerRecibos(ficheiro, pdfjs) {
   const linhas = paginas.flatMap(p => toLines(toWords(p)).map(l => l.words.map(w => w.s).join(' ')))
   const recibos = lerRecibosDeLinhas(linhas)
   if (!recibos.length) throw new Error('Não encontrei recibos de remunerações neste PDF.')
-  return recibos
+  return { recibos, ...mesDosRecibos(linhas) }
 }
 
 const qtd = (recibo, cod) => recibo.rubricas[cod]?.qtd ?? 0
@@ -116,10 +126,22 @@ export async function lerFolhaBanco(buffer) {
     const nome = row.getCell(2).value
     const iban = row.getCell(1).value
     if (typeof nome === 'string' && nome.trim() && typeof iban === 'string' && /^[A-Z]{2}\d{2}/.test(iban.replace(/\s/g, ''))) {
-      linhas.push({ linha: r, nome: nome.trim() })
+      const texto = c => { const v = row.getCell(c).value; return v == null || typeof v === 'object' ? '' : String(v).trim() }
+      linhas.push({ linha: r, nome: nome.trim(), iban: texto(1), bic: texto(3), extra: texto(7) })
     }
   })
   return { folha: ws.name, linhas }
+}
+
+const campoCsv = v => (/[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v)
+
+// CSV como sai ao exportar a folha (A IBAN, B nome, C BIC, D valor, E descrição, F mês, G),
+// só com quem tem recibo, porque uma linha sem valor não se pode pagar.
+export function csvBanco(pagamentos, mes) {
+  return pagamentos
+    .filter(p => p.valor != null)
+    .map(p => [p.iban, p.nome, p.bic, p.valor.toFixed(2), `${p.nome} Ordenado ${mes}`, mes, p.extra].map(campoCsv).join(','))
+    .join('\r\n') + '\r\n'
 }
 
 // Põe o valor pago (coluna D) e o mês (coluna F) na folha do banco, sem mexer no resto do ficheiro.
@@ -127,13 +149,19 @@ export async function preencherFolhaBanco(buffer, recibos, mes) {
   const { folha, linhas } = await lerFolhaBanco(buffer)
   const usados = new Set()
   const alteracoes = []
-  const semRecibo = []
+  const pagamentos = []
   for (const l of linhas) {
     const recibo = casarNome(l.nome, recibos.filter(r => !usados.has(r)))
     if (recibo) usados.add(recibo)
-    else semRecibo.push(l.nome)
+    pagamentos.push({ ...l, recibo: recibo || null, valor: recibo?.pago ?? null })
     alteracoes.push({ linha: l.linha, coluna: 4, valor: recibo?.pago ?? null }, { linha: l.linha, coluna: 6, valor: mes })
   }
   const ficheiro = alterarCelulas(buffer, folha, alteracoes, { recalcular: true })
-  return { ficheiro, semRecibo, semLinha: recibos.filter(r => !usados.has(r)).map(r => r.nome) }
+  return {
+    ficheiro,
+    csv: csvBanco(pagamentos, mes),
+    pagamentos,
+    semRecibo: pagamentos.filter(p => !p.recibo).map(p => p.nome),
+    semLinha: recibos.filter(r => !usados.has(r)).map(r => r.nome),
+  }
 }
