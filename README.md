@@ -18,7 +18,7 @@ Gestão financeira do alojamento: despesas CGD e numerário, faturas com documen
 | **Numerário** | Faturas pagas em dinheiro, que são as únicas faturas que somam à despesa. |
 | **Recebidas** | Faturas enviadas pela receção à espera de validação. |
 | **Por liquidar** | Faturas registadas como “Por pagar”, agrupadas por fornecedor. Escolhem-se várias e regista-se um só pagamento (CGD ou numerário), que pode ser anulado. |
-| **Produtos** | Análise por produto e tipo de produto (linhas das faturas). |
+| **Produtos** | Gasto por artigo (manteiga, leite, detergentes…) num período à escolha, a partir dos artigos lidos das faturas; botão para ler as faturas já guardadas. |
 | **Categorias / Editar categorias** | Totais por categoria e reclassificação de movimentos (com histórico). |
 | **Caixa diária** | Fechos por turno (7h, 15h, 23h), importação do Excel da caixa com pré-visualização, histórico e anulação, edição manual e TPA. |
 | **Conferência** | Conferência dos envelopes na ordem CV → MB → Numerário → próximo envelope. `Enter` ou **OK** aceita; escrever o valor real regista a diferença; cada conferência pode ser corrigida e fica com histórico. |
@@ -112,7 +112,9 @@ O modo local nunca entra no build de produção.
    4. `supabase/05_faturas_por_pagar.sql` (faturas por pagar e pagamentos agrupados)
    5. `supabase/06_entradas_transferencias.sql` (entradas do extrato e transferências da receção)
    6. `supabase/07_encargos_pessoal.sql` (TSU e IRS mensais, para o custo com pessoal em Resultados)
-   7. Opcional: `supabase/04_verificacao.sql` (só leitura, mostra os totais)
+   7. `supabase/09_salarios_banco.sql` e `supabase/10_ordenados_envios.sql` (históricos de salários e ordenados)
+   8. `supabase/11_artigos_faturas.sql` (artigos lidos das faturas: gasto por produto na página Produtos)
+   9. Opcional: `supabase/04_verificacao.sql` (só leitura, mostra os totais)
 
    Os scripts podem ser executados mais do que uma vez sem duplicar dados.
 3. **Database → Publications → supabase_realtime**: confirmar que as tabelas da aplicação estão incluídas (o `01_schema.sql` já as adiciona). Isto mantém vários dispositivos sincronizados em tempo real.
@@ -146,7 +148,7 @@ O modo local nunca entra no build de produção.
 
    ⚠️ As variáveis que começam por `VITE_` ficam visíveis no navegador: nunca lá pôr chaves secretas. A `SUPABASE_SERVICE_ROLE_KEY` não tem esse prefixo e só é lida pela função do servidor `netlify/functions/criar-utilizador.mjs`, que confirma que quem pede é administradora antes de criar a conta. Se quiseres, marca-a como *secret* no Netlify.
 
-   A `ANTHROPIC_API_KEY` também é secreta e só é lida pela função `netlify/functions/ler-fatura.mjs`. Quando a Receção junta uma foto ou PDF, a função lê fornecedor, NIF, data, nº do documento, total e IVA, e preenche os campos que ainda estão vazios; a pessoa confirma antes de enviar. O original guardado não é alterado. Cada leitura custa poucos cêntimos. Sem esta chave, a página funciona como antes e os campos escrevem-se à mão. No modo local a leitura não está disponível.
+   A `ANTHROPIC_API_KEY` também é secreta e só é lida pela função `netlify/functions/ler-fatura.mjs`. Quando a Receção junta uma foto ou PDF, a função lê fornecedor, NIF, data, nº do documento, total e IVA, e preenche os campos que ainda estão vazios; a pessoa confirma antes de enviar. Lê também os artigos de cada linha (produto, artigo genérico, quantidade e valor com IVA), que ficam gravados na fatura ao enviar. O original guardado não é alterado. Cada leitura custa poucos cêntimos. Sem esta chave, a página funciona como antes e os campos escrevem-se à mão. No modo local a leitura não está disponível.
 
    A mesma chave liga a página **Perguntar** (só para a administradora): perguntas em linguagem normal ("temos a fatura X?", "quanto fizemos em numerário em setembro?") respondidas pela função `netlify/functions/perguntar.mjs`. O Claude só pode consultar (nunca alterar) e as consultas são feitas com o login de quem pergunta, por isso as permissões do Supabase aplicam-se. Cada pergunta custa à volta de 5 a 12 cêntimos na conta da Anthropic.
 3. Fazer deploy. Entrar com a conta de administradora e abrir **Configuração** para confirmar que a validação está toda verde.

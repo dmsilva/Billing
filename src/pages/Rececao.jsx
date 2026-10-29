@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useAuth } from '../auth/AuthProvider'
 import { supabase } from '../supabase'
 import { ACCEPTED, uploadInvoiceFile, validateFile } from '../data/files'
-import { readInvoiceFiles } from '../data/invoiceReading'
+import { readInvoiceFiles, saveReadLines } from '../data/invoiceReading'
 import RececaoTransferencias from './RececaoTransferencias'
 import { applyReading, fileType } from '../lib/invoiceReading'
 import { parseMoney } from '../lib/money'
@@ -29,6 +29,7 @@ export default function Rececao() {
   const cameraRef = useRef()
   const readId = useRef(0)
   const touched = useRef({})
+  const linhas = useRef([]) // artigos lidos da fatura, gravados depois do envio
 
   async function loadMine() {
     const { data } = await supabase.from('invoices').select('id, fornecedor, data, pagamento, estado, created_at, invoice_files(id)').eq('submitted_by', user.id).order('created_at', { ascending: false }).limit(10)
@@ -61,10 +62,12 @@ export default function Rececao() {
   async function readAll(list) {
     const id = ++readId.current
     setReading({ tone: 'busy', text: 'A ler a fatura…' })
+    linhas.current = []
     const res = await readInvoiceFiles(list)
     if (id !== readId.current) return
     if (res.desligada) return setReading(null)
     if (res.error) return setReading({ tone: 'bad', text: res.error })
+    linhas.current = res.leitura?.linhas || []
     const { form: next, filled } = applyReading(formRef.current, res.leitura, todayIso(), { properties, touched: touched.current })
     setForm(next)
     setReading(filled.length
@@ -74,6 +77,7 @@ export default function Rececao() {
 
   function removeFile(i) {
     readId.current++
+    linhas.current = []
     setReading(null)
     setFiles(files.filter((_, j) => j !== i))
   }
@@ -99,12 +103,15 @@ export default function Rececao() {
       for (const file of files) {
         try { await uploadInvoiceFile({ file, invoiceId: inv.id, userId: user.id }); sent++ } catch (err) { failed.push(`${file.name} (${err.message})`) }
       }
+      // Se falhar, a administração volta a ler os artigos na página Produtos.
+      try { await saveReadLines({ id: inv.id, fornecedor: form.fornecedor.trim(), data: form.data }, linhas.current) } catch { /* fica por ler */ }
       if (failed.length) setStatus({ tone: 'bad', text: `A fatura ficou registada, mas ${failed.length} ficheiro(s) não foram enviados: ${failed.join(', ')}. Avisa a administradora.` })
       else setStatus({ tone: 'ok', text: `✓ Fatura enviada com ${sent} ficheiro(s). Já está disponível na aplicação principal para validação.` })
       setForm(f => ({ ...blank(), imovel_id: f.imovel_id, pagamento: f.pagamento, enviado_por: f.enviado_por }))
       setFiles([])
       setReading(null)
       readId.current++
+      linhas.current = []
       touched.current = {}
       loadMine()
     } catch (err) {

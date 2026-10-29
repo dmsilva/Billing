@@ -9,8 +9,8 @@ import { ACCEPTED, deleteInvoiceFile, listPaymentProofs, signedUrl, uploadInvoic
 import { euro, euroExact, parseMoney, sameAmount, sumBy } from '../lib/money'
 import { daysBetween, formatDate, formatDateTime, todayIso } from '../lib/dates'
 import { invoiceCountsAsExpense } from '../lib/finance'
-
-const PRODUCT_TYPES = ['Pequeno-almoço', 'Laticínios', 'Fruta', 'Fruta/legumes', 'Bebidas', 'Mercearia', 'Limpeza', 'Consumíveis', 'Alimentação', 'Outros']
+import { PRODUCT_TYPES } from '../lib/invoiceReading'
+import { readStoredInvoiceLines } from '../data/invoiceReading'
 const PAY_LABEL = { 'Numerário': '💶 Numerário', CGD: '🏦 CGD', 'Por pagar': '🕓 Por pagar' }
 const toInput = v => (v === null || v === undefined ? '' : String(v).replace('.', ','))
 
@@ -241,9 +241,21 @@ function FilesPanel({ invoice, userId }) {
 
 function LinesPanel({ invoice, lines, valor }) {
   const toast = useToast()
-  const { upsertLocal, removeLocal } = useData()
-  const [draft, setDraft] = useState({ produto: '', unidade: 'un', quantidade: '', valor: '', tipo: 'Outros' })
+  const { upsertLocal, removeLocal, reload } = useData()
+  const [draft, setDraft] = useState({ produto: '', artigo: '', unidade: 'un', quantidade: '', valor: '', tipo: 'Outros' })
+  const [reading, setReading] = useState(false)
   const total = sumBy(lines.filter(l => l.valor != null), l => l.valor)
+  const hasFiles = (invoice.invoice_files || []).length > 0
+
+  async function readLines() {
+    setReading(true)
+    const res = await readStoredInvoiceLines(invoice)
+    setReading(false)
+    if (res.error) return toast(res.error, 'bad')
+    upsertLocal('invoices', res.invoice)
+    reload('invoice_lines')
+    toast(res.linhas.length ? `${res.linhas.length} artigo(s) lido(s) da fatura.` : 'Não foram encontrados artigos nesta fatura.', res.linhas.length ? 'ok' : 'bad')
+  }
 
   async function add(e) {
     e.preventDefault()
@@ -252,11 +264,11 @@ function LinesPanel({ invoice, lines, valor }) {
     const v = draft.valor === '' ? null : parseMoney(draft.valor)
     if ((draft.quantidade !== '' && q === null) || (draft.valor !== '' && v === null)) return toast('Quantidade ou valor inválido.', 'bad')
     const { data, error } = await supabase.from('invoice_lines').insert({
-      invoice_id: invoice.id, produto: draft.produto.trim(), unidade: draft.unidade || null, quantidade: q, valor: v, tipo: draft.tipo, fornecedor: invoice.fornecedor, data: invoice.data,
+      invoice_id: invoice.id, produto: draft.produto.trim(), artigo: draft.artigo.trim() || null, unidade: draft.unidade || null, quantidade: q, valor: v, tipo: draft.tipo, fornecedor: invoice.fornecedor, data: invoice.data,
     }).select().single()
     if (error) return toast(`Erro: ${error.message}`, 'bad')
     upsertLocal('invoice_lines', data)
-    setDraft({ ...draft, produto: '', quantidade: '', valor: '' })
+    setDraft({ ...draft, produto: '', artigo: '', quantidade: '', valor: '' })
   }
 
   async function update(line, patch) {
@@ -272,14 +284,18 @@ function LinesPanel({ invoice, lines, valor }) {
   }
 
   return (
-    <Panel title="Linhas de produtos" hint="Artigos desta fatura. Alimentam a análise por produto e o pequeno-almoço." actions={valor != null && lines.length > 0 && (sameAmount(total, valor) ? <Badge tone="ok">Linhas = total da fatura</Badge> : <Badge tone="pending">Linhas {euro(total)} · fatura {euro(valor)}</Badge>)}>
+    <Panel title="Linhas de produtos" hint="Artigos desta fatura. O artigo (ex.: Manteiga, Leite) junta o mesmo produto de marcas e fornecedores diferentes na página Produtos." actions={<>
+      {valor != null && lines.length > 0 && (sameAmount(total, valor) ? <Badge tone="ok">Linhas = total da fatura</Badge> : <Badge tone="pending">Linhas {euro(total)} · fatura {euro(valor)}</Badge>)}
+      {hasFiles && <button className="secondary small" disabled={reading} onClick={readLines} title="Lê os artigos da foto/PDF; substitui só as linhas lidas automaticamente">{reading ? 'A ler…' : lines.some(l => l.lido_auto) ? '↻ Ler artigos outra vez' : '🔎 Ler artigos da fatura'}</button>}
+    </>}>
       <div className="tablewrap">
         <table className="mini-table">
-          <thead><tr><th>Produto</th><th>Unidade</th><th className="money">Quantidade</th><th className="money">Valor</th><th>Categoria do produto</th><th /></tr></thead>
+          <thead><tr><th>Produto</th><th>Artigo</th><th>Unidade</th><th className="money">Quantidade</th><th className="money">Valor</th><th>Categoria do produto</th><th /></tr></thead>
           <tbody>
             {lines.map(l => (
               <tr key={l.id}>
                 <td><input className="cell" defaultValue={l.produto} onBlur={e => e.target.value.trim() && e.target.value !== l.produto && update(l, { produto: e.target.value.trim() })} /></td>
+                <td><input className="cell" defaultValue={l.artigo || ''} onBlur={e => e.target.value.trim() !== (l.artigo || '') && update(l, { artigo: e.target.value.trim() || null })} /></td>
                 <td><input className="cell short" defaultValue={l.unidade || ''} onBlur={e => e.target.value !== (l.unidade || '') && update(l, { unidade: e.target.value || null })} /></td>
                 <td className="money"><input className="cell short num" defaultValue={toInput(l.quantidade)} onBlur={e => { const v = e.target.value === '' ? null : parseMoney(e.target.value); if (v !== null || e.target.value === '') update(l, { quantidade: v }) }} /></td>
                 <td className="money"><input className="cell short num" defaultValue={toInput(l.valor)} onBlur={e => { const v = e.target.value === '' ? null : parseMoney(e.target.value); if (v !== null || e.target.value === '') update(l, { valor: v }) }} /></td>
@@ -289,6 +305,7 @@ function LinesPanel({ invoice, lines, valor }) {
             ))}
             <tr className="add-row">
               <td><input className="cell" value={draft.produto} onChange={e => setDraft({ ...draft, produto: e.target.value })} placeholder="Novo produto…" onKeyDown={e => e.key === 'Enter' && add(e)} /></td>
+              <td><input className="cell" value={draft.artigo} onChange={e => setDraft({ ...draft, artigo: e.target.value })} placeholder="Ex.: Manteiga" onKeyDown={e => e.key === 'Enter' && add(e)} /></td>
               <td><input className="cell short" value={draft.unidade} onChange={e => setDraft({ ...draft, unidade: e.target.value })} /></td>
               <td className="money"><input className="cell short num" inputMode="decimal" value={draft.quantidade} onChange={e => setDraft({ ...draft, quantidade: e.target.value })} onKeyDown={e => e.key === 'Enter' && add(e)} /></td>
               <td className="money"><input className="cell short num" inputMode="decimal" value={draft.valor} onChange={e => setDraft({ ...draft, valor: e.target.value })} onKeyDown={e => e.key === 'Enter' && add(e)} /></td>
@@ -296,7 +313,7 @@ function LinesPanel({ invoice, lines, valor }) {
               <td><button className="primary small" onClick={add}>Adicionar</button></td>
             </tr>
           </tbody>
-          {lines.length > 0 && <tfoot><tr><td colSpan={3}><strong>Total das linhas</strong></td><td className="money"><strong>{euroExact(total)}</strong></td><td colSpan={2} /></tr></tfoot>}
+          {lines.length > 0 && <tfoot><tr><td colSpan={4}><strong>Total das linhas</strong></td><td className="money"><strong>{euroExact(total)}</strong></td><td colSpan={2} /></tr></tfoot>}
         </table>
       </div>
     </Panel>
