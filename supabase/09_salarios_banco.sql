@@ -1,5 +1,5 @@
 -- =====================================================================
--- FaturaClaro — 8 Histórico dos ficheiros de salários enviados ao banco
+-- FaturaClaro — 9 Histórico dos ficheiros de salários enviados ao banco
 -- Executar depois do 01 e 02 (pode ser executado mais do que uma vez).
 --
 -- Cada vez que se descarrega o ficheiro para o banco (página "Salários p/ banco") fica aqui

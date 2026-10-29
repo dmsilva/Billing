@@ -196,7 +196,7 @@ function Historico() {
 
   return (
     <Panel title="Histórico" hint="Cada ficheiro descarregado fica aqui guardado, com quem foi pago e quanto.">
-      {falta ? <div className="notice warn">Para guardar o histórico, executa uma vez o ficheiro supabase/08_salarios_banco.sql no Supabase.</div> : (
+      {falta ? <div className="notice warn">Para guardar o histórico, executa uma vez o ficheiro supabase/09_salarios_banco.sql no Supabase.</div> : (
         <div className="tablewrap"><table className="mini-table">
           <thead><tr><th>Data</th><th>Mês</th><th>Pessoas</th><th className="money">Total</th><th /></tr></thead>
           <tbody>{envios === null ? <Empty colSpan={5}>A carregar…</Empty> : envios.length ? envios.map(e => (

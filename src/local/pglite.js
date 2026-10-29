@@ -5,7 +5,7 @@ import policiesSql from '../../supabase/02_policies.sql?raw'
 import paymentsSql from '../../supabase/05_faturas_por_pagar.sql?raw'
 import creditsSql from '../../supabase/06_entradas_transferencias.sql?raw'
 import encargosSql from '../../supabase/07_encargos_pessoal.sql?raw'
-import salariosSql from '../../supabase/08_salarios_banco.sql?raw'
+import salariosSql from '../../supabase/09_salarios_banco.sql?raw'
 import grantsSql from '../../supabase/test/01_grants.sql?raw'
 import seedSql from '../../supabase/03_seed_legacy.sql?raw'
 
