@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import ExcelJS from 'exceljs'
-import { conferirRecibos, lerRecibosDeLinhas, mesDosRecibos, noitesDoSubsidio, numero, preencherFolhaBanco } from '../src/lib/recibos.js'
+import { casarFolhaBanco, conferirRecibos, gerarFolhaBanco, lerRecibosDeLinhas, tsvBanco, mesDosRecibos, noitesDoSubsidio, numero, preencherFolhaBanco } from '../src/lib/recibos.js'
 
 // Linhas de texto como saem do PDF do contabilista (dados fictícios).
 const recibo = (via, cod, nome, base, itens, pago) => [
@@ -18,6 +18,20 @@ const linhasPdf = [
   ...recibo('Original', 9, 'Rui Costa', '920 . 00', rui, '1 , 288 . 92'),
   ...recibo('Duplicado', 9, 'Rui Costa', '920 . 00', rui, '1 , 288 . 92'),
 ]
+
+
+function folhaBanco() {
+  const wb = new ExcelJS.Workbook()
+  wb.addWorksheet('salarios para contabilidade 1')
+  const ws = wb.addWorksheet('Ordenados_Chalet')
+  ws.getRow(1).values = ['PT50 0000 0000 0000 0000 0000 1', 'Ana Silva', 'BICXPTPL', null, null, 'Setembro', 'check']
+  ws.getRow(2).values = ['PT50 0000 0000 0000 0000 0000 2', 'Marta Sousa', 'BICXPTPL', null, null, 'Setembro']
+  ws.getRow(3).values = ['LT00 0000 0000 0000 0003', 'Rui Costa', 'BICXLT2X', null, null, 'Setembro']
+  for (const r of [1, 2, 3]) ws.getCell(`E${r}`).value = { formula: `CONCAT(CONCAT(B${r}, " Ordenado "), F${r})` }
+  ws.getCell('D4').value = { formula: 'SUM(D1:D3)' }
+  ws.getCell('D1').numFmt = '#,##0.00'
+  return wb
+}
 
 const linha = (codigo, nome, vencimento, extra = {}) => ({ codigo, nome, vencimento, feriados: [], noites: 0, diurnos: [], faltas: [], nocturno: false, ...extra })
 
@@ -62,15 +76,7 @@ describe('recibos de remunerações', () => {
   })
 
   it('preenche a folha do banco com o valor pago e o mês, sem mexer no resto', async () => {
-    const wb = new ExcelJS.Workbook()
-    wb.addWorksheet('salarios para contabilidade 1')
-    const ws = wb.addWorksheet('Ordenados_Chalet')
-    ws.getRow(1).values = ['PT50 0000 0000 0000 0000 0000 1', 'Ana Silva', 'BICXPTPL', null, null, 'Setembro', 'check']
-    ws.getRow(2).values = ['PT50 0000 0000 0000 0000 0000 2', 'Marta Sousa', 'BICXPTPL', null, null, 'Setembro']
-    ws.getRow(3).values = ['LT00 0000 0000 0000 0003', 'Rui Costa', 'BICXLT2X', null, null, 'Setembro']
-    for (const r of [1, 2, 3]) ws.getCell(`E${r}`).value = { formula: `CONCAT(CONCAT(B${r}, " Ordenado "), F${r})` }
-    ws.getCell('D4').value = { formula: 'SUM(D1:D3)' }
-    ws.getCell('D1').numFmt = '#,##0.00'
+    const wb = folhaBanco()
     const out = await preencherFolhaBanco(await wb.xlsx.writeBuffer(), lerRecibosDeLinhas(linhasPdf), 'Outubro')
     expect(out.semRecibo).toEqual(['Marta Sousa'])
     expect(out.semLinha).toEqual([])
@@ -88,5 +94,20 @@ describe('recibos de remunerações', () => {
     expect(f.getCell('E1').formula).toBe('CONCAT(CONCAT(B1, " Ordenado "), F1)')
     expect(f.getCell('D1').numFmt).toBe('#,##0.00')
     expect(f.getCell('G1').value).toBe('check')
+  })
+
+  it('PDF só com alguns recibos e linhas editadas: o ficheiro leva só quem fica marcado', async () => {
+    const buffer = await folhaBanco().xlsx.writeBuffer()
+    const soRui = lerRecibosDeLinhas(linhasPdf).filter(r => r.codigo === 9)
+    const { folha, pagamentos } = await casarFolhaBanco(buffer, soRui)
+    expect(pagamentos.map(p => [p.nome, p.incluir, p.valor])).toEqual([['Ana Silva', false, null], ['Marta Sousa', false, null], ['Rui Costa', true, 1288.92]])
+    expect(tsvBanco(pagamentos, 'Outubro').split('\r\n').filter(Boolean).map(l => l.split('\t')[1])).toEqual(['Rui Costa'])
+    // Retirar o Rui e pagar à Marta à mão
+    const editados = pagamentos.map(p => (p.nome === 'Rui Costa' ? { ...p, incluir: false } : p.nome === 'Marta Sousa' ? { ...p, incluir: true, valor: 500 } : p))
+    expect(tsvBanco(editados, 'Outubro')).toBe(['PT50 0000 0000 0000 0000 0000 2', 'Marta Sousa', 'BICXPTPL', '500.00', 'Marta Sousa Ordenado Outubro', 'Outubro', ''].join('\t') + '\r\n')
+    const lido = new ExcelJS.Workbook()
+    await lido.xlsx.load(gerarFolhaBanco(buffer, folha, editados, 'Outubro'))
+    const f = lido.getWorksheet('Ordenados_Chalet')
+    expect([f.getCell('D1').value, f.getCell('D2').value, f.getCell('D3').value]).toEqual([null, 500, null])
   })
 })
