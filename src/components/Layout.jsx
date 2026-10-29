@@ -27,6 +27,7 @@ export const PAGES = [
   { path: '/editar-categorias', label: 'Editar categorias', icon: '⚙', title: 'Editar categorias', sub: 'Classificação das saídas CGD' },
   { section: 'ADMINISTRAÇÃO' },
   { path: '/ordenados', label: 'Ordenados', icon: '☷', title: 'Ordenados', sub: 'Folha para a contabilidade a partir do horário' },
+  { path: '/salarios-banco', label: 'Salários p/ banco', icon: '€', title: 'Salários para o banco', sub: 'Recibos do contabilista → ficheiro para o banco' },
   { path: '/utilizadores', label: 'Utilizadores', icon: '☺', title: 'Utilizadores', sub: 'Acessos da administradora e da receção' },
   { path: '/configuracao', label: 'Dados e migração', icon: '⛁', title: 'Dados e migração', sub: 'Validação dos dados migrados e importação do navegador antigo' },
 ]
