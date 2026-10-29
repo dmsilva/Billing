@@ -4,7 +4,7 @@ import { sum } from './money.js'
 
 // Recibos de remunerações que o contabilista envia em PDF (um por trabalhador, com Original e Duplicado).
 // Serve para conferir o que foi pago com o que se enviou (feriados, noites, faltas, vencimento)
-// e para preencher a folha "Ordenados_Chalet" que se exporta em CSV para o banco.
+// e para preencher a folha "Ordenados_Chalet" que se exporta em TSV para o banco.
 
 export const RUBRICAS = { vencimento: 110, feriado: 126, ferias: 170, noite: 181, falta: 415 }
 // O subsídio de noite vem em dias: 7 noites = 10,00 (noites × 10/7).
@@ -133,14 +133,15 @@ export async function lerFolhaBanco(buffer) {
   return { folha: ws.name, linhas }
 }
 
-const campoCsv = v => (/[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v)
+// Num TSV os campos não levam aspas: tabs e mudanças de linha passam a espaço.
+const campoTsv = v => String(v ?? '').replace(/[\t\r\n]+/g, ' ')
 
-// CSV como sai ao exportar a folha (A IBAN, B nome, C BIC, D valor, E descrição, F mês, G),
+// TSV (separado por tabs) como sai ao exportar a folha (A IBAN, B nome, C BIC, D valor, E descrição, F mês, G),
 // só com quem tem recibo, porque uma linha sem valor não se pode pagar.
-export function csvBanco(pagamentos, mes) {
+export function tsvBanco(pagamentos, mes) {
   return pagamentos
     .filter(p => p.valor != null)
-    .map(p => [p.iban, p.nome, p.bic, p.valor.toFixed(2), `${p.nome} Ordenado ${mes}`, mes, p.extra].map(campoCsv).join(','))
+    .map(p => [p.iban, p.nome, p.bic, p.valor.toFixed(2), `${p.nome} Ordenado ${mes}`, mes, p.extra].map(campoTsv).join('\t'))
     .join('\r\n') + '\r\n'
 }
 
@@ -159,7 +160,7 @@ export async function preencherFolhaBanco(buffer, recibos, mes) {
   const ficheiro = alterarCelulas(buffer, folha, alteracoes, { recalcular: true })
   return {
     ficheiro,
-    csv: csvBanco(pagamentos, mes),
+    tsv: tsvBanco(pagamentos, mes),
     pagamentos,
     semRecibo: pagamentos.filter(p => !p.recibo).map(p => p.nome),
     semLinha: recibos.filter(r => !usados.has(r)).map(r => r.nome),

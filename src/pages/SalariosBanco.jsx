@@ -71,7 +71,7 @@ export default function SalariosBanco() {
       {lidos?.mes && (
         <Panel title={`Recibos de ${nomeMes(lidos.ano, lidos.mes)}`}
           actions={banco && <>
-            <button className="primary" onClick={() => descarregar(banco.csv, `${base}.csv`, 'text/csv;charset=utf-8')}>Descarregar CSV para o banco</button>
+            <button className="primary" onClick={() => descarregar(banco.tsv, `${base}.tsv`, 'text/tab-separated-values;charset=utf-8')}>Descarregar ficheiro para o banco (TSV)</button>
             <button className="secondary" onClick={() => descarregar(banco.ficheiro, `${base}.xlsx`, XLSX_TYPE)}>Descarregar Excel</button>
           </>}>
           {!ordenados && <div className="notice warn">Falta o Excel dos ordenados para saber o IBAN de cada pessoa.</div>}

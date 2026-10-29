@@ -74,10 +74,10 @@ describe('recibos de remunerações', () => {
     const out = await preencherFolhaBanco(await wb.xlsx.writeBuffer(), lerRecibosDeLinhas(linhasPdf), 'Outubro')
     expect(out.semRecibo).toEqual(['Marta Sousa'])
     expect(out.semLinha).toEqual([])
-    // CSV para o banco: só quem tem recibo, com as colunas da folha
-    expect(out.csv).toBe([
-      'PT50 0000 0000 0000 0000 0000 1,Ana Silva,BICXPTPL,1193.72,Ana Silva Ordenado Outubro,Outubro,check',
-      'LT00 0000 0000 0000 0003,Rui Costa,BICXLT2X,1288.92,Rui Costa Ordenado Outubro,Outubro,',
+    // TSV para o banco: só quem tem recibo, com as colunas da folha
+    expect(out.tsv).toBe([
+      ['PT50 0000 0000 0000 0000 0000 1', 'Ana Silva', 'BICXPTPL', '1193.72', 'Ana Silva Ordenado Outubro', 'Outubro', 'check'].join('\t'),
+      ['LT00 0000 0000 0000 0003', 'Rui Costa', 'BICXLT2X', '1288.92', 'Rui Costa Ordenado Outubro', 'Outubro', ''].join('\t'),
       '',
     ].join('\r\n'))
     const lido = new ExcelJS.Workbook()
