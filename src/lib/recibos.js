@@ -136,33 +136,47 @@ export async function lerFolhaBanco(buffer) {
 // Num TSV os campos não levam aspas: tabs e mudanças de linha passam a espaço.
 const campoTsv = v => String(v ?? '').replace(/[\t\r\n]+/g, ' ')
 
-// TSV (separado por tabs) como sai ao exportar a folha (A IBAN, B nome, C BIC, D valor, E descrição, F mês, G),
-// só com quem tem recibo, porque uma linha sem valor não se pode pagar.
+// Só se paga a quem está marcado e tem valor.
+export const aPagar = pagamentos => pagamentos.filter(p => p.incluir && p.valor != null && p.valor > 0)
+
+// TSV (separado por tabs) como sai ao exportar a folha (A IBAN, B nome, C BIC, D valor, E descrição, F mês, G).
 export function tsvBanco(pagamentos, mes) {
-  return pagamentos
-    .filter(p => p.valor != null)
+  return aPagar(pagamentos)
     .map(p => [p.iban, p.nome, p.bic, p.valor.toFixed(2), `${p.nome} Ordenado ${mes}`, mes, p.extra].map(campoTsv).join('\t'))
     .join('\r\n') + '\r\n'
 }
 
-// Põe o valor pago (coluna D) e o mês (coluna F) na folha do banco, sem mexer no resto do ficheiro.
-export async function preencherFolhaBanco(buffer, recibos, mes) {
+// Junta cada linha da folha do banco ao seu recibo. Quem não tem recibo neste PDF fica desmarcado,
+// por isso um PDF só com alguns recibos dá um ficheiro só com essas pessoas.
+export async function casarFolhaBanco(buffer, recibos) {
   const { folha, linhas } = await lerFolhaBanco(buffer)
   const usados = new Set()
-  const alteracoes = []
-  const pagamentos = []
-  for (const l of linhas) {
+  const pagamentos = linhas.map(l => {
     const recibo = casarNome(l.nome, recibos.filter(r => !usados.has(r)))
     if (recibo) usados.add(recibo)
-    pagamentos.push({ ...l, recibo: recibo || null, valor: recibo?.pago ?? null })
-    alteracoes.push({ linha: l.linha, coluna: 4, valor: recibo?.pago ?? null }, { linha: l.linha, coluna: 6, valor: mes })
-  }
-  const ficheiro = alterarCelulas(buffer, folha, alteracoes, { recalcular: true })
+    return { ...l, recibo: recibo || null, valor: recibo?.pago ?? null, incluir: Boolean(recibo) }
+  })
+  return { folha, pagamentos, semLinha: recibos.filter(r => !usados.has(r)).map(r => r.nome) }
+}
+
+// Põe o valor (coluna D) e o mês (coluna F) na folha do banco, sem mexer no resto do ficheiro.
+// Quem não vai ser pago fica com o valor em branco.
+export function gerarFolhaBanco(buffer, folha, pagamentos, mes) {
+  const pagos = new Set(aPagar(pagamentos))
+  const alteracoes = pagamentos.flatMap(p => [
+    { linha: p.linha, coluna: 4, valor: pagos.has(p) ? p.valor : null },
+    { linha: p.linha, coluna: 6, valor: mes },
+  ])
+  return alterarCelulas(buffer, folha, alteracoes, { recalcular: true })
+}
+
+export async function preencherFolhaBanco(buffer, recibos, mes) {
+  const { folha, pagamentos, semLinha } = await casarFolhaBanco(buffer, recibos)
   return {
-    ficheiro,
+    ficheiro: gerarFolhaBanco(buffer, folha, pagamentos, mes),
     tsv: tsvBanco(pagamentos, mes),
     pagamentos,
     semRecibo: pagamentos.filter(p => !p.recibo).map(p => p.nome),
-    semLinha: recibos.filter(r => !usados.has(r)).map(r => r.nome),
+    semLinha,
   }
 }
