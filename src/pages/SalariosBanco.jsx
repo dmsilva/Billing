@@ -4,29 +4,13 @@ import { lerOrdenados, MESES, nomeMes } from '../lib/ordenados'
 import { aPagar, casarFolhaBanco, conferirRecibos, gerarFolhaBanco, lerRecibos, tsvBanco } from '../lib/recibos'
 import { euro, parseMoney, sum } from '../lib/money'
 import { supabase } from '../supabase'
+import { dataHora, deBase64, descarregar, paraBase64, XLSX_TYPE } from '../lib/ficheiros'
 
-const XLSX_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
 const TSV_TYPE = 'text/tab-separated-values;charset=utf-8'
 const HISTORICO = 'salarios_banco_envios'
 
-function descarregar(conteudo, nome, type) {
-  const a = document.createElement('a')
-  a.href = URL.createObjectURL(new Blob([conteudo], { type }))
-  a.download = nome
-  a.click()
-  setTimeout(() => URL.revokeObjectURL(a.href), 1000)
-}
-
-function paraBase64(bytes) {
-  let s = ''
-  for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
-  return btoa(s)
-}
-const deBase64 = b64 => Uint8Array.from(atob(b64), c => c.charCodeAt(0))
-
 const nomeDoMes = mes => MESES[mes - 1][0].toUpperCase() + MESES[mes - 1].slice(1)
 const textoValor = v => (v == null ? '' : v.toFixed(2).replace('.', ','))
-const dataHora = iso => new Date(iso).toLocaleString('pt-PT', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
 const mesIso = (ano, mes) => `${ano}-${String(mes).padStart(2, '0')}`
 
 export default function SalariosBanco() {
