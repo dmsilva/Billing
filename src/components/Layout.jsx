@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import InstallApp from './InstallApp'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import AutoConferencia from './AutoConferencia'
 import { useAuth } from '../auth/AuthProvider'
@@ -66,7 +67,7 @@ export default function Layout() {
     <div className="app">
       <aside className={`sidebar ${open ? 'open' : ''}`}>
         <div className="brand-row">
-          <div className="brand"><strong>Fatura<span>Claro</span></strong><small>Gestão financeira</small></div>
+          <div className="brand"><strong>Fatura <span>Chalet</span></strong><small>Gestão financeira</small></div>
           <button className="menu-btn" onClick={() => setOpen(o => !o)} aria-label="Menu">☰</button>
         </div>
         <nav className="nav" onClick={() => setOpen(false)}>
@@ -88,6 +89,7 @@ export default function Layout() {
             : <div className={`sync ${online ? 'on' : 'off'}`}>{online ? '● Sincronizado' : '○ A ligar…'}</div>}
           <div className="who">{profile?.nome || profile?.email}</div>
           <button className="link-btn light" onClick={signOut}>Terminar sessão</button>
+          <InstallApp className="dark" />
         </div>
       </aside>
       <main className="content">

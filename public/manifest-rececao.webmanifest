@@ -1,0 +1,18 @@
+{
+  "id": "/rececao",
+  "name": "Fatura Chalet · Receção",
+  "short_name": "FC Receção",
+  "description": "Enviar faturas e alocar transferências",
+  "lang": "pt-PT",
+  "start_url": "/rececao",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f6f7fb",
+  "theme_color": "#d63384",
+  "icons": [
+    { "src": "/icons/rececao-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/rececao-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/rececao-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
