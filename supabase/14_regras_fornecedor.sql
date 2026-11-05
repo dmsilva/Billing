@@ -78,8 +78,8 @@ insert into public.categories (nome) values ('Pequeno-almoço / pastelaria'), ('
 insert into public.regras_fornecedor (fornecedor, categoria_id, pagamento, nota)
 select 'Grão de Trigo', id, 'Por pagar', 'Pão e bolos do pequeno-almoço; liquida-se no fim do mês.' from public.categories where nome = 'Pequeno-almoço / pastelaria'
 on conflict (chave) do nothing;
-insert into public.regras_fornecedor (fornecedor, categoria_id, nota)
-select 'Starline', id, 'Sistema de reservas.' from public.categories where nome = 'Sistema de reservas (Starline)'
+insert into public.regras_fornecedor (fornecedor, categoria_id, pagamento, nota)
+select 'Starline', id, 'CGD', 'Sistema de reservas; paga por PayPal (sai da CGD).' from public.categories where nome = 'Sistema de reservas (Starline)'
 on conflict (chave) do nothing;
 
 -- As faturas que já existem destes fornecedores passam para a categoria da regra

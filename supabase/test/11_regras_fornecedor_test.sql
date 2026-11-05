@@ -20,7 +20,7 @@ begin
   insert into public.invoices (data, fornecedor, pagamento, valor, origem, estado)
   values ('2026-11-03', 'Graotrigo Lda', 'Numerário', 33.10, 'rececao', 'Por validar');
   insert into public.invoices (data, fornecedor, pagamento, valor, origem, estado)
-  values ('2026-11-03', 'Starline', 'CGD', 50, 'rececao', 'Por validar');
+  values ('2026-11-03', 'Starline', 'Numerário', 50, 'rececao', 'Por validar');
 end $$;
 reset role;
 do $$
@@ -29,7 +29,7 @@ begin
   select categoria_id, pagamento into v_cat, v_pag from public.invoices where fornecedor = 'Graotrigo Lda';
   if v_cat is distinct from (select id from public.categories where nome = 'Pequeno-almoço / pastelaria') then raise exception 'FALHOU: categoria Grão de Trigo'; end if;
   if v_pag <> 'Por pagar' then raise exception 'FALHOU: pagamento Grão de Trigo (%)', v_pag; end if;
-  -- Starline: categoria fixa, pagamento o que a receção escolheu.
+  -- Starline: paga por PayPal → CGD, mesmo que a receção escolha numerário.
   select categoria_id, pagamento into v_cat, v_pag from public.invoices where fornecedor = 'Starline';
   if v_cat is distinct from (select id from public.categories where nome = 'Sistema de reservas (Starline)') then raise exception 'FALHOU: categoria Starline'; end if;
   if v_pag <> 'CGD' then raise exception 'FALHOU: pagamento Starline (%)', v_pag; end if;
