@@ -1,6 +1,9 @@
 // Leitura automática de faturas: esquema pedido ao modelo e conversão do resultado
 // em campos do formulário da Receção. Lógica pura, usada no navegador e na função do Netlify.
 
+// Tipos de documento que a leitura distingue (fatura-recibo, talão e venda a dinheiro já vêm pagos).
+export const TIPOS_DOCUMENTO = ['fatura', 'fatura_recibo', 'fatura_simplificada', 'venda_a_dinheiro', 'talao', 'recibo', 'nota_credito', 'outro']
+
 export const READING_SCHEMA = {
   type: 'object',
   properties: {
@@ -13,8 +16,9 @@ export const READING_SCHEMA = {
     pagamento: { type: 'string', enum: ['numerario', 'cartao', 'transferencia', 'desconhecido'], description: 'Como foi pago, se o documento o indicar' },
     cliente: { type: ['string', 'null'], description: 'Nome e morada do cliente (adquirente) tal como aparecem no documento' },
     descricao: { type: ['string', 'null'], description: 'Resumo curto, em português, do que foi comprado (máx. 80 caracteres)' },
+    tipo_documento: { type: 'string', enum: TIPOS_DOCUMENTO, description: 'Tipo de documento' },
   },
-  required: ['fornecedor', 'nif', 'data', 'documento', 'valor_total', 'iva', 'pagamento', 'cliente', 'descricao'],
+  required: ['fornecedor', 'nif', 'data', 'documento', 'valor_total', 'iva', 'pagamento', 'cliente', 'descricao', 'tipo_documento'],
   additionalProperties: false,
 }
 
@@ -27,7 +31,8 @@ Extrai os dados do documento. Usa null para tudo o que não consigas ler com seg
 - iva: o total de IVA do documento.
 - pagamento: numerario se diz numerário/dinheiro; cartao se diz multibanco, MB, cartão, Visa, TPA; transferencia se diz transferência/MB Way/débito direto; senão desconhecido.
 - cliente: o nome e a morada do cliente/adquirente, se existirem.
-- descricao: um resumo curto do que foi comprado, por exemplo "Produtos de limpeza e pão".`
+- descricao: um resumo curto do que foi comprado, por exemplo "Produtos de limpeza e pão".
+- tipo_documento: o que está escrito no título do documento (Fatura, Fatura-Recibo, Fatura Simplificada, Venda a Dinheiro, Talão, Recibo, Nota de Crédito); outro se não for claro.`
 
 // Tipos aceites por extensão, para ficheiros que o telemóvel envia sem tipo.
 const BY_EXTENSION = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp', heic: 'image/heic', heif: 'image/heif', pdf: 'application/pdf' }
@@ -74,6 +79,7 @@ export function normalizeReading(raw) {
     pagamento: ['numerario', 'cartao', 'transferencia'].includes(r.pagamento) ? r.pagamento : null,
     cliente: cleanText(r.cliente, 200),
     descricao: cleanText(r.descricao, 120),
+    tipo_documento: TIPOS_DOCUMENTO.includes(r.tipo_documento) && r.tipo_documento !== 'outro' ? r.tipo_documento : null,
   }
 }
 

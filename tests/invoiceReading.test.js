@@ -22,9 +22,9 @@ describe('tipo de ficheiro', () => {
 describe('normalizeReading', () => {
   it('só aceita valores com formato válido', () => {
     expect(normalizeReading({ fornecedor: '  Pingo   Doce ', nif: 'PT 500 829 993', data: '2026-10-18', documento: 'FS 1/23', valor_total: 12.345, iva: 1.2 }))
-      .toEqual({ fornecedor: 'Pingo Doce', nif: '500829993', data: '2026-10-18', documento: 'FS 1/23', valor_total: 12.35, iva: 1.2, pagamento: null, cliente: null, descricao: null })
+      .toEqual({ fornecedor: 'Pingo Doce', nif: '500829993', data: '2026-10-18', documento: 'FS 1/23', valor_total: 12.35, iva: 1.2, pagamento: null, cliente: null, descricao: null, tipo_documento: null })
     expect(normalizeReading({ data: '2026-02-30', nif: '123', valor_total: -4, iva: 'abc' }))
-      .toEqual({ fornecedor: null, nif: null, data: null, documento: null, valor_total: null, iva: null, pagamento: null, cliente: null, descricao: null })
+      .toEqual({ fornecedor: null, nif: null, data: null, documento: null, valor_total: null, iva: null, pagamento: null, cliente: null, descricao: null, tipo_documento: null })
     expect(normalizeReading(null).fornecedor).toBeNull()
   })
 })

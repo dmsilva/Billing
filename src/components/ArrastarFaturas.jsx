@@ -118,7 +118,7 @@ export default function ArrastarFaturas({ dropAnywhere = true }) {
 
   const ready = items.filter(it => it.status === 'pronto')
   // Gravar de uma vez só as completas e sem aviso de repetida; as outras gravam-se uma a uma.
-  const safe = ready.filter(it => !(dupsByKey[it.key] || []).length && it.draft.data && it.draft.fornecedor.trim() && it.draft.valor)
+  const safe = ready.filter(it => !(dupsByKey[it.key] || []).length && it.draft.data && it.draft.fornecedor.trim() && it.draft.valor && it.draft.pagamento)
   const pending = items.filter(it => it.status === 'a ler' || it.status === 'a gravar').length
 
   function close() {
@@ -134,7 +134,7 @@ export default function ArrastarFaturas({ dropAnywhere = true }) {
       {dragging && <div className="drop-overlay"><div>📥 Larga aqui as faturas (PDF ou foto)<small>A aplicação lê cada uma e mostra os dados para confirmares antes de gravar.</small></div></div>}
       {items.length > 0 && (
         <Modal wide title={`Faturas arrastadas (${items.length})`} onClose={close}>
-          <div className="small">Cada fatura fica <strong>Por pagar</strong> e <strong>Por validar</strong>. Confirma os campos e carrega em Gravar. Os valores com <span className="src qr">QR</span> vêm do código QR da fatura; os com <span className="src ia">lido</span> foram lidos da imagem e convém confirmar.</div>
+          <div className="small">As faturas ficam <strong>Por pagar</strong> e <strong>Por validar</strong>; as faturas-recibo e talões ficam já pagas e só tens de dizer como. Confirma os campos e carrega em Gravar. Os valores com <span className="src qr">QR</span> vêm do código QR da fatura; os com <span className="src ia">lido</span> foram lidos da imagem e convém confirmar.</div>
           {items.map(it => (
             <DropCard key={it.key} it={it} dups={dupsByKey[it.key] || []} properties={ctx.current.properties}
               onChange={p => patch(it.key, o => ({ draft: { ...o.draft, ...p, fonte: { ...o.draft.fonte, ...Object.fromEntries(Object.keys(p).map(k => [k, 'manual'])) } } }))}
@@ -180,11 +180,13 @@ function DropCard({ it, dups, properties, onChange, onSave, onDiscard }) {
             <label>Imóvel<select value={d.imovel_id} disabled={it.status !== 'pronto'} onChange={e => onChange({ imovel_id: e.target.value })}>
               <option value="">Sem imóvel</option>{properties.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
             </select></label>
-            <label>Pagamento<select value={d.pagamento} disabled={it.status !== 'pronto'} onChange={e => onChange({ pagamento: e.target.value })}>
-              <option value="Por pagar">🕓 Por pagar</option><option value="Numerário">💶 Já paga em numerário</option><option value="CGD">🏦 Já paga por CGD</option>
+            <label className={d.pagaNoAto && !d.pagamento ? 'ask' : ''}><span className="lbl">{d.pagaNoAto ? 'Já paga · como?' : 'Pagamento'} {tag('pagamento')}</span><select value={d.pagamento} disabled={it.status !== 'pronto'} onChange={e => onChange({ pagamento: e.target.value })}>
+              {!d.pagamento && <option value="">Escolhe como foi paga…</option>}
+              <option value="Numerário">💶 Numerário</option><option value="CGD">🏦 Cartão / transferência (CGD)</option><option value="Por pagar">🕓 Ainda por pagar</option>
             </select></label>
           </div>
           <label className="drop-desc"><span className="lbl">O que foi comprado {tag('descricao')}</span><input value={d.descricao} disabled={it.status !== 'pronto'} onChange={e => onChange({ descricao: e.target.value })} /></label>
+          {d.pagaNoAto && !d.pagamento && it.status === 'pronto' && <div className="reading ask">É {d.tipo ? d.tipo.toLowerCase() : 'um documento já pago'}: fica como paga. Escolhe se foi em numerário ou por cartão/transferência (CGD).</div>}
           {d.avisos.map((a, i) => <div key={i} className="reading bad">{a}</div>)}
           {dups.length > 0 && it.status !== 'gravada' && (
             <div className={`reading ${sure ? 'dup' : 'bad'}`}>
@@ -198,7 +200,7 @@ function DropCard({ it, dups, properties, onChange, onSave, onDiscard }) {
         {it.error && <div className="err">{it.error}</div>}
         <div className="drop-actions">
           {it.status === 'gravada'
-            ? <span className="ok">✓ Gravada como {d.pagamento === 'Por pagar' ? 'por pagar' : d.pagamento} · <Link to={`/faturas/${it.invoiceId}`}>abrir</Link></span>
+            ? <span className="ok">✓ Gravada {d.pagamento === 'Por pagar' ? 'como por pagar' : d.pagamento === 'CGD' ? 'como paga por CGD' : 'como paga em numerário'} · <Link to={`/faturas/${it.invoiceId}`}>abrir</Link></span>
             : <>
               <button type="button" className="primary" disabled={it.status !== 'pronto'} onClick={onSave}>{it.status === 'a gravar' ? 'A gravar…' : dups.length ? 'Gravar mesmo assim' : 'Gravar'}</button>
               <button type="button" className="secondary" disabled={it.status === 'a gravar'} onClick={onDiscard}>{dups.length ? 'Descartar (é repetida)' : 'Descartar'}</button>

@@ -31,7 +31,7 @@ const properties = [{ id: 1, nome: "Chalet D'Ávila" }, { id: 2, nome: 'Chalet d
 describe('rascunho da fatura arrastada', () => {
   it('o QR manda nos números; o nome e o imóvel vêm das faturas anteriores do mesmo NIF', () => {
     const d = buildDraft({ qr: parseQrAT(QR), leitura: { fornecedor: 'PINGO DOCE - DISTRIBUIÇÃO', nif: '500829993', valor_total: 35.9, iva: 5, descricao: 'Leite e pão', pagamento: 'cartao' }, invoices, properties, today: '2026-11-05' })
-    expect(d).toMatchObject({ fornecedor: 'Pingo Doce', data: '2026-11-03', documento: 'FS 0123/45678', valor: '35,20', iva: '5,20', descricao: 'Leite e pão', imovel_id: '2', categoria_id: 7, pagamento: 'Por pagar', nif: '500829993', atcud: 'JJ37MKD9-45678' })
+    expect(d).toMatchObject({ fornecedor: 'Pingo Doce', data: '2026-11-03', documento: 'FS 0123/45678', valor: '35,20', iva: '5,20', descricao: 'Leite e pão', imovel_id: '2', categoria_id: 7, pagamento: 'CGD', pagaNoAto: true, nif: '500829993', atcud: 'JJ37MKD9-45678' })
     expect(d.fonte).toMatchObject({ fornecedor: 'historico', valor: 'qr', descricao: 'ia' })
     expect(d.avisos.join(' ')).toMatch(/35,90 €.*35,20 €/)
   })
@@ -40,6 +40,19 @@ describe('rascunho da fatura arrastada', () => {
     expect(d).toMatchObject({ fornecedor: 'Talho Y', valor: '50,00', imovel_id: '1', pagamento: 'Por pagar' })
     expect(d.fonte.valor).toBe('ia')
     expect(d.avisos.join(' ')).toMatch(/numerário/)
+  })
+  it('fatura (FT) fica por pagar; fatura-recibo fica paga e pergunta como', () => {
+    const ft = parseQrAT(QR.replace('D:FS', 'D:FT'))
+    expect(buildDraft({ qr: ft, leitura: { pagamento: 'numerario' }, invoices, properties, today: '2026-11-05' })).toMatchObject({ pagamento: 'Por pagar', pagaNoAto: false })
+    const fr = parseQrAT(QR.replace('D:FS', 'D:FR'))
+    const d = buildDraft({ qr: fr, leitura: null, invoices, properties, today: '2026-11-05' })
+    expect(d).toMatchObject({ pagamento: '', pagaNoAto: true, tipo: 'Fatura-recibo' })
+    expect(draftToInvoice(d, {}).error).toMatch(/como foi paga/)
+    expect(buildDraft({ qr: fr, leitura: { pagamento: 'numerario' }, invoices, properties, today: '2026-11-05' })).toMatchObject({ pagamento: 'Numerário', fonte: { pagamento: 'ia' } })
+  })
+  it('sem QR usa o tipo lido do documento', () => {
+    expect(buildDraft({ qr: null, leitura: { fornecedor: 'Loja', tipo_documento: 'fatura_recibo', pagamento: 'cartao' }, invoices, properties, today: '2026-11-05' })).toMatchObject({ pagamento: 'CGD', pagaNoAto: true, tipo: 'Fatura-recibo' })
+    expect(buildDraft({ qr: null, leitura: { fornecedor: 'Loja', tipo_documento: 'fatura' }, invoices, properties, today: '2026-11-05' })).toMatchObject({ pagamento: 'Por pagar', pagaNoAto: false })
   })
   it('sem nada lido fica em branco com aviso', () => {
     const d = buildDraft({ qr: null, leitura: null, invoices, properties: [], today: '2026-11-05' })

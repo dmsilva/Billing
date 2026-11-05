@@ -11,6 +11,12 @@ const cents = v => (v === null || v === undefined || v === '' ? null : Math.roun
 // "FT 2026A/123", "ft2026a-123" e "FT 2026 A/123" são o mesmo documento.
 export const docKey = s => String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '')
 
+// Documentos que já vêm pagos: fatura-recibo, fatura simplificada (talão de loja), venda a dinheiro, talão e recibo.
+const PAID_QR = new Set(['FR', 'FS', 'VD', 'TV', 'RG', 'RC'])
+const PAID_AI = new Set(['fatura_recibo', 'fatura_simplificada', 'venda_a_dinheiro', 'talao', 'recibo'])
+const AI_TIPO_NOME = { fatura: 'Fatura', fatura_recibo: 'Fatura-recibo', fatura_simplificada: 'Fatura simplificada', venda_a_dinheiro: 'Venda a dinheiro', talao: 'Talão', recibo: 'Recibo', nota_credito: 'Nota de crédito' }
+export const PAY_FROM_READING = { numerario: 'Numerário', cartao: 'CGD', transferencia: 'CGD' }
+
 const NIF_RE = /NIF(?: do fornecedor)?:\s*(\d{9})/i
 const ATCUD_RE = /ATCUD:\s*([A-Z0-9-]+)/i
 export const nifOf = inv => NIF_RE.exec(inv?.observacoes || '')?.[1] || null
@@ -48,14 +54,20 @@ export function buildDraft({ qr, leitura, invoices = [], properties = [], today 
   if (qr && r?.valor_total !== null && r?.valor_total !== undefined && cents(r.valor_total) !== cents(qr.valor_total)) {
     avisos.push(`A leitura da imagem deu ${formatAmount(r.valor_total)} €, mas o código QR diz ${formatAmount(qr.valor_total)} €. Ficou o valor do QR.`)
   }
-  if (qr?.tipo === 'NC') avisos.push('É uma nota de crédito (devolução), não uma fatura a pagar.')
+  if (qr?.tipo === 'NC' || (!qr && r?.tipo_documento === 'nota_credito')) avisos.push('É uma nota de crédito (devolução), não uma fatura a pagar.')
   if (qr?.anulado) avisos.push('O código QR diz que este documento foi anulado.')
   if (!qr && !r) avisos.push('Não foi possível ler este ficheiro. Preenche os campos à mão.')
   if (data && today && data > today) avisos.push('A data da fatura é no futuro. Confirma a data.')
 
   const fromClient = matchProperty(r?.cliente, properties)
   const imovel_id = fromClient ?? known?.imovel_id ?? properties[0]?.id ?? ''
-  if (r?.pagamento === 'numerario') avisos.push('A fatura diz que foi paga em numerário. Se já foi paga, muda o pagamento antes de gravar.')
+  // Fatura-recibo e afins já vêm pagas: pergunta-se como (a leitura sugere, se o documento disser).
+  const pagaNoAto = qr ? PAID_QR.has(qr.tipo) : PAID_AI.has(r?.tipo_documento)
+  let pagamento = 'Por pagar'
+  if (pagaNoAto) {
+    pagamento = PAY_FROM_READING[r?.pagamento] || ''
+    if (pagamento) fonte.pagamento = 'ia'
+  } else if (r?.pagamento === 'numerario') avisos.push('A fatura diz que foi paga em numerário. Se já foi paga, muda o pagamento antes de gravar.')
 
   return {
     fornecedor: fornecedor || '',
@@ -66,10 +78,11 @@ export function buildDraft({ qr, leitura, invoices = [], properties = [], today 
     descricao: r?.descricao || '',
     imovel_id: imovel_id === null ? '' : String(imovel_id),
     categoria_id: known?.categoria_id ?? null,
-    pagamento: 'Por pagar',
+    pagamento,
+    pagaNoAto,
     nif: nif || '',
     atcud: qr?.atcud || '',
-    tipo: qr?.tipo_nome || null,
+    tipo: qr?.tipo_nome || AI_TIPO_NOME[r?.tipo_documento] || null,
     fonte,
     avisos,
   }
@@ -103,6 +116,7 @@ export function draftToInvoice(draft, { userId }) {
   const iva = String(draft.iva || '').trim() ? parseMoney(draft.iva) : null
   if (String(draft.iva || '').trim() && iva === null) return { error: 'O IVA não é válido. Usa, por exemplo, 2,30' }
   if (!draft.data) return { error: 'Falta a data da fatura.' }
+  if (!['Por pagar', 'Numerário', 'CGD'].includes(draft.pagamento)) return { error: 'Escolhe como foi paga.' }
   const obs = [
     draft.nif && `NIF do fornecedor: ${draft.nif}`,
     draft.atcud && `ATCUD: ${draft.atcud}`,
