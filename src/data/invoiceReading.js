@@ -1,5 +1,5 @@
-import { localMode, supabase } from '../supabase'
-import { fileType } from '../lib/invoiceReading'
+import { BUCKET, localMode, supabase } from '../supabase'
+import { fileType, linesToRows } from '../lib/invoiceReading'
 
 const MAX_SIDE = 1600
 const MAX_PDF_BYTES = 3.5 * 1024 * 1024
@@ -54,4 +54,42 @@ export async function readInvoiceFiles(files) {
   const body = await res.json().catch(() => ({}))
   if (body.desligada) return { desligada: true }
   return res.ok ? { leitura: body.leitura } : { error: `${body.error || `Erro ${res.status}`} Preenche os campos à mão.` }
+}
+
+// Grava as linhas de artigos lidas na Receção na fatura acabada de enviar.
+export async function saveReadLines(invoice, linhas) {
+  const rows = linesToRows(linhas, invoice)
+  if (!rows.length) return 0
+  const { error } = await supabase.from('invoice_lines').insert(rows)
+  if (error) throw error
+  return rows.length
+}
+
+// Administração: volta a ler os ficheiros guardados de uma fatura e substitui as linhas lidas
+// automaticamente (as escritas à mão ficam). Devolve { linhas } (as gravadas) ou { error }.
+export async function readStoredInvoiceLines(invoice) {
+  const stored = (invoice.invoice_files || []).slice(0, 4)
+  if (!stored.length) return { error: 'A fatura não tem ficheiros.' }
+  const files = []
+  for (const f of stored) {
+    const { data, error } = await supabase.storage.from(BUCKET).download(f.storage_path)
+    if (error || !data) continue
+    files.push(new File([data], f.nome_ficheiro || 'fatura', { type: f.mime || data.type || '' }))
+  }
+  if (!files.length) return { error: 'Não foi possível abrir os ficheiros da fatura.' }
+  const res = await readInvoiceFiles(files)
+  if (res.desligada) return { error: 'A leitura automática não está ligada neste ambiente.', desligada: true }
+  if (res.error) return { error: res.error.replace(/ Preenche os campos à mão\.$/, '') }
+  const rows = linesToRows(res.leitura?.linhas, invoice)
+  const del = await supabase.from('invoice_lines').delete().eq('invoice_id', invoice.id).eq('lido_auto', true)
+  if (del.error) return { error: del.error.message }
+  let inserted = []
+  if (rows.length) {
+    const { data, error } = await supabase.from('invoice_lines').insert(rows).select()
+    if (error) return { error: error.message }
+    inserted = data
+  }
+  const { data: inv, error: upErr } = await supabase.from('invoices').update({ artigos_lidos_em: new Date().toISOString() }).eq('id', invoice.id).select().single()
+  if (upErr) return { error: upErr.message }
+  return { linhas: inserted, invoice: { ...invoice, artigos_lidos_em: inv.artigos_lidos_em } }
 }

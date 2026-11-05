@@ -338,3 +338,6 @@ td.wrap{white-space:normal;min-width:180px}
 @media (max-width:760px){.drop-card{grid-template-columns:1fr}.form-grid.drop-grid{grid-template-columns:1fr 1fr}}
 .modal label .lbl{display:flex;align-items:center;gap:4px;flex-wrap:wrap}
 .modal label.ask select{border-color:var(--warn);background:#fff8df}.drop-fields .reading.ask{background:#fff8df;color:#8a6500;font-weight:600}
+/* Produtos: gasto por artigo */
+.inline-field{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--muted)}.inline-field input{min-width:0}
+tr.selected td{background:#eef4ff}.inline-edit .cell{min-width:140px}
