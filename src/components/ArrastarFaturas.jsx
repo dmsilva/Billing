@@ -4,7 +4,7 @@ import { useAuth } from '../auth/AuthProvider'
 import { useData } from '../data/DataProvider'
 import { supabase } from '../supabase'
 import { ACCEPTED, uploadInvoiceFile, validateFile } from '../data/files'
-import { readInvoiceFiles } from '../data/invoiceReading'
+import { readInvoiceFiles, saveReadLines } from '../data/invoiceReading'
 import { scanInvoiceQr } from '../data/qrScan'
 import { buildDraft, draftToInvoice, findInvoiceDuplicates } from '../lib/invoiceDrop'
 import { fileType } from '../lib/invoiceReading'
@@ -41,7 +41,7 @@ export default function ArrastarFaturas({ dropAnywhere = true }) {
     const [qr, read] = await Promise.all([scanInvoiceQr(item.file), readInvoiceFiles([item.file])])
     const draft = buildDraft({ qr, leitura: read.leitura || null, invoices: ctx.current.invoices, properties: ctx.current.properties, today: todayIso() })
     if (read.error && !qr) draft.avisos.unshift(read.error.replace(' Preenche os campos à mão.', ''))
-    patch(item.key, { status: 'pronto', draft })
+    patch(item.key, { status: 'pronto', draft, linhas: read.leitura?.linhas || [] })
   }, [])
 
   const add = useCallback(list => {
@@ -109,6 +109,8 @@ export default function ArrastarFaturas({ dropAnywhere = true }) {
     patch(it.key, { status: 'a gravar', error: null })
     const { data: inv, error: insErr } = await supabase.from('invoices').insert(row).select('id').single()
     if (insErr) return patch(it.key, { status: 'pronto', error: `Não foi possível gravar: ${insErr.message}` })
+    // Artigos lidos (manteiga, leite…): se falhar, a fatura fica por ler em Produtos.
+    try { await saveReadLines({ id: inv.id, fornecedor: row.fornecedor, data: row.data }, it.linhas) } catch { /* fica por ler */ }
     let fileErr = null
     try { await uploadInvoiceFile({ file: it.file, invoiceId: inv.id, userId: user.id }) } catch (err) { fileErr = err.message }
     const { data: full } = await supabase.from('invoices').select(INVOICE_SELECT).eq('id', inv.id).single()
