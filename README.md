@@ -115,7 +115,8 @@ O modo local nunca entra no build de produção.
    7. `supabase/09_salarios_banco.sql` e `supabase/10_ordenados_envios.sql` (históricos de salários e ordenados)
    8. `supabase/11_artigos_faturas.sql` (artigos lidos das faturas: gasto por produto na página Produtos)
    9. `supabase/12_faturas_email.sql` (fila "Faturas do email": o programa do Gmail indicado nessa página envia para lá os PDFs de faturas)
-   10. Opcional: `supabase/04_verificacao.sql` (só leitura, mostra os totais)
+   10. `supabase/13_faturas_email_sem_detalhe.sql` (não guarda anexos de "detalhe", como o detalhe da fatura da Vodafone)
+   11. Opcional: `supabase/04_verificacao.sql` (só leitura, mostra os totais)
 
    Os scripts podem ser executados mais do que uma vez sem duplicar dados.
 3. **Database → Publications → supabase_realtime**: confirmar que as tabelas da aplicação estão incluídas (o `01_schema.sql` já as adiciona). Isto mantém vários dispositivos sincronizados em tempo real.
