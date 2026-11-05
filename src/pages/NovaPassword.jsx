@@ -20,7 +20,7 @@ export default function NovaPassword() {
   return (
     <div className="center-screen">
       <form className="auth-card" onSubmit={submit}>
-        <div className="brand dark"><strong>Fatura<span>Claro</span></strong></div>
+        <div className="brand dark"><strong>Fatura <span>Chalet</span></strong></div>
         <h2>Definir palavra-passe</h2>
         {!session && <div className="notice">A abrir a sessão a partir do link do email…</div>}
         <label>Nova palavra-passe<input type="password" autoComplete="new-password" value={password} onChange={e => setPassword(e.target.value)} /></label>

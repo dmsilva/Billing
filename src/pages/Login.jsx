@@ -28,7 +28,7 @@ export default function Login() {
   return (
     <div className="center-screen">
       <form className="auth-card" onSubmit={submit}>
-        <div className="brand dark"><strong>Fatura<span>Claro</span></strong><small>{isRececao ? 'Envio de faturas · Receção' : 'Gestão financeira'}</small></div>
+        <div className="brand dark"><strong>Fatura <span>Chalet</span></strong><small>{isRececao ? 'Envio de faturas · Receção' : 'Gestão financeira'}</small></div>
         <h2>Entrar</h2>
         {localMode && <div className="notice">Modo local: entra com <strong>admin@local</strong> (administradora) ou <strong>rececao@local</strong> (receção), com qualquer palavra-passe, ou com uma conta criada na página Utilizadores.</div>}
         <label>Email<input type="email" autoComplete="username" value={email} onChange={e => setEmail(e.target.value)} required /></label>

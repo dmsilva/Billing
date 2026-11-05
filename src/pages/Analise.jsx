@@ -59,11 +59,11 @@ export default function Analise() {
         <Panel title={`Evolução mensal · ${selected}`} actions={<button className="link-btn" onClick={() => setSelected(null)}>Fechar</button>}>
           <ResponsiveContainer width="100%" height={220}>
             <BarChart data={evolution}>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5eaf2" />
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f2e5eb" />
               <XAxis dataKey="label" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
               <YAxis tick={{ fontSize: 10 }} axisLine={false} tickLine={false} width={60} tickFormatter={v => euro(v).replace(',00', '')} />
               <Tooltip formatter={(v, n) => [euro(v), n]} labelFormatter={(_, p) => (p?.[0] ? monthLabel(p[0].payload.month) : '')} />
-              <Bar dataKey="cgd" name="CGD" stackId="a" fill="#3864ec" />
+              <Bar dataKey="cgd" name="CGD" stackId="a" fill="#ec388c" />
               <Bar dataKey="numerario" name="Numerário" stackId="a" fill="#15905f" radius={[6, 6, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>

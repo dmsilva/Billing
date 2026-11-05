@@ -35,7 +35,7 @@ function MissingConfig() {
   return (
     <div className="center-screen">
       <div className="auth-card">
-        <div className="brand dark"><strong>Fatura<span>Claro</span></strong></div>
+        <div className="brand dark"><strong>Fatura <span>Chalet</span></strong></div>
         <h2>Falta configurar o Supabase</h2>
         <p className="muted">Define as variáveis <code>VITE_SUPABASE_URL</code> e <code>VITE_SUPABASE_ANON_KEY</code> (no ficheiro <code>.env</code> ou nas variáveis de ambiente do Netlify) e volta a publicar.</p>
         <p className="muted">Para experimentar no computador sem Supabase, corre <code>npm run local</code>.</p>
@@ -49,7 +49,7 @@ function Pending() {
   return (
     <div className="center-screen">
       <div className="auth-card">
-        <div className="brand dark"><strong>Fatura<span>Claro</span></strong></div>
+        <div className="brand dark"><strong>Fatura <span>Chalet</span></strong></div>
         <h2>Conta à espera de aprovação</h2>
         <p className="muted">A conta <strong>{profile?.email}</strong> foi criada, mas a administradora ainda não lhe atribuiu acesso.</p>
         <div className="actions">
