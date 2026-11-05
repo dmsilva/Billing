@@ -2,7 +2,7 @@
 // Páginas: vai sempre primeiro à rede (dados e versões novas); sem rede, mostra a última versão guardada.
 // Ficheiros com hash em /assets/ e ícones: guardados em cache (nunca mudam de conteúdo).
 // Nunca guarda pedidos ao Supabase nem às funções do Netlify.
-const CACHE = 'fatura-chalet-v1'
+const CACHE = 'fatura-chalet-v2'
 
 self.addEventListener('install', () => self.skipWaiting())
 self.addEventListener('activate', event => {

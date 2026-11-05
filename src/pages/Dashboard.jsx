@@ -10,7 +10,7 @@ import { attentionCounts, bankCredits, breakfastAnalysis, byCategory, byMonth, b
 import { euro, sum } from '../lib/money'
 import { formatDate, monthLabel, monthOf, monthShort, monthsOfYear } from '../lib/dates'
 
-export const PALETTE = ['#ea3b8d', '#ef6a73', '#f2b84b', '#f28b31', '#9a687f', '#5bb58b', '#a9a0a9', '#7351cf']
+export const PALETTE = ['#b76e90', '#ef6a73', '#f2b84b', '#f28b31', '#8c7680', '#5bb58b', '#a6a3a6', '#7351cf']
 const euroAxis = v => (v >= 1000 ? `${Math.round(v / 1000)}k €` : `${v} €`)
 
 export default function Dashboard() {
@@ -95,12 +95,12 @@ export default function Dashboard() {
           <div className="chart-box">
             <ResponsiveContainer width="100%" height={260}>
               <BarChart data={monthly} onClick={e => e?.activePayload?.[0] && set({ month: e.activePayload[0].payload.month })}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f2e5eb" />
-                <XAxis dataKey="label" tick={{ fontSize: 11, fill: '#9a7184' }} axisLine={false} tickLine={false} />
-                <YAxis tickFormatter={euroAxis} tick={{ fontSize: 10, fill: '#9a7184' }} axisLine={false} tickLine={false} width={52} />
-                <Tooltip formatter={(v, n) => [euro(v), n]} labelFormatter={(_, p) => (p?.[0] ? monthLabel(p[0].payload.month) : '')} cursor={{ fill: '#ffeef6' }} />
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#eee9eb" />
+                <XAxis dataKey="label" tick={{ fontSize: 11, fill: '#8e7d85' }} axisLine={false} tickLine={false} />
+                <YAxis tickFormatter={euroAxis} tick={{ fontSize: 10, fill: '#8e7d85' }} axisLine={false} tickLine={false} width={52} />
+                <Tooltip formatter={(v, n) => [euro(v), n]} labelFormatter={(_, p) => (p?.[0] ? monthLabel(p[0].payload.month) : '')} cursor={{ fill: '#faf3f6' }} />
                 <Legend wrapperStyle={{ fontSize: 11 }} />
-                <Bar dataKey="cgd" name="CGD" stackId="d" fill="#ec388c" radius={[0, 0, 2, 2]} cursor="pointer">
+                <Bar dataKey="cgd" name="CGD" stackId="d" fill="#b86c8f" radius={[0, 0, 2, 2]} cursor="pointer">
                   {monthly.map(m => <Cell key={m.month} fillOpacity={!filters.month || filters.month === m.month ? 1 : 0.45} />)}
                 </Bar>
                 <Bar dataKey="numerario" name="Numerário" stackId="d" fill="#15905f" radius={[6, 6, 0, 0]} cursor="pointer">
