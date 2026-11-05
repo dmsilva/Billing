@@ -28,6 +28,8 @@ begin
   if r <> 'recebida' then raise exception 'FALHOU: primeira receção (%)', r; end if;
   r := public.receber_fatura_email(current_setting('teste.chave'), 'm1', 'fatura.pdf', 'application/pdf', 'JVBERi0xLjQ=');
   if r <> 'repetida' then raise exception 'FALHOU: repetida (%)', r; end if;
+  r := public.receber_fatura_email(current_setting('teste.chave'), 'm1', 'detalhe_fatura_20261009.pdf', 'application/pdf', 'JVBERi0xLjQ=');
+  if r <> 'ignorada' then raise exception 'FALHOU: detalhe da Vodafone não foi ignorado (%)', r; end if;
   begin
     perform public.receber_fatura_email(current_setting('teste.chave'), 'm2', 'virus.exe', 'application/x-msdownload', 'TVo=');
     raise exception 'FALHOU: aceitou .exe';
@@ -58,6 +60,7 @@ select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-00000000000a
 do $$ declare v record; c1 text; c2 text; begin
   select * into v from public.email_faturas where mensagem_id = 'm1';
   if v.id is null then raise exception 'FALHOU: administração não vê a fila'; end if;
+  if exists (select 1 from public.email_faturas where nome_ficheiro like 'detalhe%') then raise exception 'FALHOU: detalhe ficou guardado'; end if;
   if v.mime <> 'application/pdf' or v.estado <> 'pendente' then raise exception 'FALHOU: tipo/estado (%/%)', v.mime, v.estado; end if;
   update public.email_faturas set estado = 'ignorada', tratado_em = now(), tratado_por = auth.uid() where id = v.id;
   select chave into c1 from public.email_faturas_chave;
