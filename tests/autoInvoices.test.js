@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { matchInvoicesToBank, mentionsSupplier, planAutoUpdates, suggestInvoiceCategory, categoryHistory } from '../src/lib/autoInvoices.js'
+import { matchInvoicesToBank, mentionsSupplier, planAutoUpdates, suggestInvoiceCategory, categoryHistory, ruleFor, ruleKey } from '../src/lib/autoInvoices.js'
 
 const categories = [
   { id: 1, nome: 'Por classificar' },
@@ -8,6 +8,7 @@ const categories = [
   { id: 4, nome: 'Fornecedor — padeiro / Grão Trigo' },
   { id: 5, nome: 'Bebidas' },
   { id: 6, nome: 'Produtos de limpeza' },
+  { id: 7, nome: 'Pequeno-almoço / pastelaria' },
 ]
 const byId = new Map(categories.map(c => [c.id, c]))
 const inv = (o) => ({ id: 1, origem: 'rececao', estado: 'Por validar', pagamento: 'CGD', categoria_id: null, bank_transaction_id: null, payment_id: null, ...o })
@@ -17,13 +18,35 @@ describe('categoria automática', () => {
     const h = new Map()
     expect(suggestInvoiceCategory({ fornecedor: 'Pingo Doce - Distribuição Alimentar, S.A.' }, h, categories)).toBe(2)
     expect(suggestInvoiceCategory({ fornecedor: 'MODELO CONTINENTE HIPERMERCADOS' }, h, categories)).toBe(3)
-    expect(suggestInvoiceCategory({ fornecedor: 'Grão de Trigo, Lda' }, h, categories)).toBe(4)
+    expect(suggestInvoiceCategory({ fornecedor: 'Grão de Trigo, Lda' }, h, categories)).toBe(7)
+    expect(suggestInvoiceCategory({ fornecedor: 'GRAOTRIGO LDA' }, h, categories)).toBe(7)
+    expect(suggestInvoiceCategory({ fornecedor: 'Padaria do Bairro' }, h, categories)).toBe(4)
     expect(suggestInvoiceCategory({ fornecedor: 'Manuel J. Cabral' }, h, categories)).toBe(6)
     expect(suggestInvoiceCategory({ fornecedor: 'Fornecedor desconhecido' }, h, categories)).toBe(null)
   })
   it('a categoria já usada para o fornecedor ganha às regras', () => {
     const h = categoryHistory([{ fornecedor: 'Pingo Doce, SA', categoria_id: 5, estado: 'Validada' }, { fornecedor: 'Pingo Doce', categoria_id: 1 }], byId)
     expect(suggestInvoiceCategory({ fornecedor: 'PINGO DOCE' }, h, categories)).toBe(5)
+  })
+})
+
+describe('regras por fornecedor', () => {
+  const rules = [{ id: 1, fornecedor: 'Grão de Trigo', categoria_id: 7, pagamento: 'Por pagar' }, { id: 2, fornecedor: 'Starline', categoria_id: 5, pagamento: null }]
+  it('a chave ignora acentos, "de" e espaços, como no SQL', () => {
+    expect(ruleKey('Grão de Trigo, Lda')).toBe('graotrigolda')
+    expect(ruleKey('GRAOTRIGO LDA')).toBe('graotrigolda')
+  })
+  it('encontra a regra mesmo com o nome escrito de outra forma', () => {
+    expect(ruleFor('Graotrigo Lda', rules)?.id).toBe(1)
+    expect(ruleFor('STARLINE SOFTWARE', rules)?.id).toBe(2)
+    expect(ruleFor('Pingo Doce', rules)).toBe(null)
+    expect(ruleFor('', rules)).toBe(null)
+  })
+  it('a regra ganha à categoria já usada e entra na classificação automática', () => {
+    const h = categoryHistory([{ fornecedor: 'Grão de Trigo', categoria_id: 4, estado: 'Validada' }], byId)
+    expect(suggestInvoiceCategory({ fornecedor: 'Grão de Trigo' }, h, categories, rules)).toBe(7)
+    const plan = planAutoUpdates({ invoices: [inv({ id: 9, fornecedor: 'Grão Trigo' })], transactions: [], categories, rules })
+    expect(plan.invoices).toEqual([{ id: 9, patch: { categoria_id: 7 } }])
   })
 })
 

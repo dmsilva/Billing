@@ -35,6 +35,12 @@ describe('rascunho da fatura arrastada', () => {
     expect(d.fonte).toMatchObject({ fornecedor: 'historico', valor: 'qr', descricao: 'ia' })
     expect(d.avisos.join(' ')).toMatch(/35,90 €.*35,20 €/)
   })
+  it('fornecedor com regra: categoria e pagamento vêm da regra', () => {
+    const rules = [{ id: 1, fornecedor: 'Grão de Trigo', categoria_id: 42, pagamento: 'Por pagar' }]
+    const d = buildDraft({ qr: null, leitura: { fornecedor: 'GRAOTRIGO, LDA', nif: '222222222', data: '2026-11-02', documento: 'FT 9/1', valor_total: 20, iva: 1.2, pagamento: 'numerario' }, invoices, properties, rules, today: '2026-11-05' })
+    expect(d).toMatchObject({ categoria_id: 42, pagamento: 'Por pagar', regraPagamento: 'Por pagar' })
+    expect(d.fonte.pagamento).toBe('regra')
+  })
   it('sem QR usa a leitura automática e avisa quando diz numerário', () => {
     const d = buildDraft({ qr: null, leitura: { fornecedor: 'Talho Y', nif: '111111111', data: '2026-11-02', documento: 'FT 1/2', valor_total: 50, iva: 3, pagamento: 'numerario', cliente: "Chalet D'Ávila, Lisboa" }, invoices, properties, today: '2026-11-05' })
     expect(d).toMatchObject({ fornecedor: 'Talho Y', valor: '50,00', imovel_id: '1', pagamento: 'Por pagar' })

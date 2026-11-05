@@ -15,8 +15,8 @@ import { Modal, useToast } from './ui'
 const INVOICE_SELECT = '*, invoice_files(id, nome_ficheiro, mime, storage_path, tamanho, created_at)'
 export const OPEN_EVENT = 'fatura-chalet:arrastar-faturas'
 export const EMAIL_SAVED_EVENT = 'fatura-chalet:email-fatura-gravada'
-const FONTE = { qr: 'QR', ia: 'lido', historico: 'já conhecido' }
-const FONTE_TITLE = { qr: 'Tirado do código QR da fatura (o mais fiável)', ia: 'Lido da imagem pela leitura automática: confirma', historico: 'Nome usado nas faturas anteriores com o mesmo NIF' }
+const FONTE = { qr: 'QR', ia: 'lido', historico: 'já conhecido', regra: 'regra' }
+const FONTE_TITLE = { qr: 'Tirado do código QR da fatura (o mais fiável)', ia: 'Lido da imagem pela leitura automática: confirma', historico: 'Nome usado nas faturas anteriores com o mesmo NIF', regra: 'Definido para este fornecedor em Editar categorias' }
 
 // Abre a janela de revisão com ficheiros escolhidos noutro sítio (ex.: botão na página Faturas).
 export const openDroppedInvoices = files => window.dispatchEvent(new CustomEvent(OPEN_EVENT, { detail: [...files] }))
@@ -27,25 +27,26 @@ const hasFiles = e => [...(e.dataTransfer?.types || [])].includes('Files')
 // para rever e grava como "Por pagar" e "Por validar". Nada é gravado sem carregar em Gravar.
 export default function ArrastarFaturas({ dropAnywhere = true }) {
   const { user } = useAuth()
-  const { invoices, properties, upsertLocal } = useData()
+  const { invoices, properties, regras_fornecedor, upsertLocal } = useData()
   const toast = useToast()
   const [items, setItems] = useState([])
   const [dragging, setDragging] = useState(false)
   const depth = useRef(0)
   const seq = useRef(0)
   const ctx = useRef({})
-  ctx.current = { invoices, properties: properties.filter(p => p.ativo !== false) }
+  ctx.current = { invoices, rules: regras_fornecedor, properties: properties.filter(p => p.ativo !== false) }
 
   const patch = (key, p) => setItems(list => list.map(it => (it.key === key ? { ...it, ...(typeof p === 'function' ? p(it) : p) } : it)))
 
   const process = useCallback(async item => {
     const [qr, read] = await Promise.all([scanInvoiceQr(item.file), readInvoiceFiles([item.file])])
-    const draft = buildDraft({ qr, leitura: read.leitura || null, invoices: ctx.current.invoices, properties: ctx.current.properties, today: todayIso() })
+    const draft = buildDraft({ qr, leitura: read.leitura || null, invoices: ctx.current.invoices, properties: ctx.current.properties, rules: ctx.current.rules, today: todayIso() })
     const em = item.file.emailFatura
     if (em) {
       draft.emailDe = em.remetente || 'email'
       // Escolhido na página Faturas do email (ex.: débito direto na CGD para gás, luz e telefone).
-      if (em.pagamento) { draft.pagamento = em.pagamento; draft.debitoDireto = em.pagamento === 'CGD' }
+      // A regra do fornecedor (ex.: Grão de Trigo por pagar) ganha à escolha geral da página.
+      if (em.pagamento && !draft.regraPagamento) { draft.pagamento = em.pagamento; draft.debitoDireto = em.pagamento === 'CGD' }
     }
     if (read.error && !qr) draft.avisos.unshift(read.error.replace(' Preenche os campos à mão.', ''))
     patch(item.key, { status: 'pronto', draft, linhas: read.leitura?.linhas || [] })
