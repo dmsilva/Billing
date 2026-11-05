@@ -28,6 +28,16 @@ describe('categoria automática', () => {
 })
 
 describe('conferência com o extrato', () => {
+  it('faturas do email por débito direto ligam-se ao débito semanas depois', () => {
+    const txs = [{ id: 20, valor: -538.9, data_mov: '2026-10-28', descricao: 'DD VODAFONE PORTUGAL' }]
+    const dd = { origem: 'manual', fornecedor: 'Vodafone Portugal', valor: 538.9, data: '2026-10-09', observacoes: 'Paga por débito direto (CGD).\nRecebida por email de Vodafone.' }
+    expect(matchInvoicesToBank([inv(dd)], txs)).toEqual([{ invoiceId: 1, txId: 20 }])
+    // Uma fatura manual sem débito direto continua a não ser ligada sozinha.
+    expect(matchInvoicesToBank([inv({ ...dd, observacoes: 'Adicionada arrastando o ficheiro.' })], txs)).toEqual([])
+    // Fatura normal da receção continua com a janela curta.
+    expect(matchInvoicesToBank([inv({ fornecedor: 'Vodafone', valor: 538.9, data: '2026-10-09' })], txs)).toEqual([])
+  })
+
   const txs = [
     { id: 10, data_mov: '2026-10-03', descricao: 'COMPRA 1234 PINGO DOCE LISBOA', valor: 45.2 },
     { id: 11, data_mov: '2026-10-20', descricao: 'TRF FORNECEDOR X', valor: 45.2 },
