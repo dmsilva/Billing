@@ -14,6 +14,7 @@ import { Modal, useToast } from './ui'
 
 const INVOICE_SELECT = '*, invoice_files(id, nome_ficheiro, mime, storage_path, tamanho, created_at)'
 export const OPEN_EVENT = 'fatura-chalet:arrastar-faturas'
+export const EMAIL_SAVED_EVENT = 'fatura-chalet:email-fatura-gravada'
 const FONTE = { qr: 'QR', ia: 'lido', historico: 'já conhecido' }
 const FONTE_TITLE = { qr: 'Tirado do código QR da fatura (o mais fiável)', ia: 'Lido da imagem pela leitura automática: confirma', historico: 'Nome usado nas faturas anteriores com o mesmo NIF' }
 
@@ -40,6 +41,7 @@ export default function ArrastarFaturas({ dropAnywhere = true }) {
   const process = useCallback(async item => {
     const [qr, read] = await Promise.all([scanInvoiceQr(item.file), readInvoiceFiles([item.file])])
     const draft = buildDraft({ qr, leitura: read.leitura || null, invoices: ctx.current.invoices, properties: ctx.current.properties, today: todayIso() })
+    if (item.file.emailFatura) draft.emailDe = item.file.emailFatura.remetente || 'email'
     if (read.error && !qr) draft.avisos.unshift(read.error.replace(' Preenche os campos à mão.', ''))
     patch(item.key, { status: 'pronto', draft, linhas: read.leitura?.linhas || [] })
   }, [])
@@ -111,6 +113,11 @@ export default function ArrastarFaturas({ dropAnywhere = true }) {
     if (insErr) return patch(it.key, { status: 'pronto', error: `Não foi possível gravar: ${insErr.message}` })
     // Artigos lidos (manteiga, leite…): se falhar, a fatura fica por ler em Produtos.
     try { await saveReadLines({ id: inv.id, fornecedor: row.fornecedor, data: row.data }, it.linhas) } catch { /* fica por ler */ }
+    // Veio da fila "Faturas do email": fica marcada como tratada e ligada à fatura.
+    if (it.file.emailFatura) {
+      await supabase.from('email_faturas').update({ estado: 'gravada', invoice_id: inv.id, tratado_em: new Date().toISOString(), tratado_por: user.id }).eq('id', it.file.emailFatura.id)
+      window.dispatchEvent(new CustomEvent(EMAIL_SAVED_EVENT, { detail: it.file.emailFatura.id }))
+    }
     let fileErr = null
     try { await uploadInvoiceFile({ file: it.file, invoiceId: inv.id, userId: user.id }) } catch (err) { fileErr = err.message }
     const { data: full } = await supabase.from('invoices').select(INVOICE_SELECT).eq('id', inv.id).single()
