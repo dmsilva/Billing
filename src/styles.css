@@ -368,3 +368,12 @@ body{background:#faf8f9}
 .toast{background:#3a2c33}
 .modal-backdrop{background:rgba(58,44,51,.35)}
 @media(max-width:760px){.sidebar{border-right:0;border-bottom:1px solid var(--sidebar-line)}}
+
+/* Faturas do email: escolher várias */
+.email-bulk{border:1px solid #f1e3ea;background:#fffafd;border-radius:12px;padding:10px 12px;margin-bottom:12px;display:grid;gap:8px}
+.email-chips{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.email-chips .chip{border:1px solid #eedce4;background:#fff;border-radius:999px;padding:5px 11px;font-size:13px;font-weight:600;color:#7d5166;cursor:pointer}
+.email-chips .chip.on{background:var(--accent);border-color:var(--accent);color:#fff}
+.email-actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.email-actions select{margin-left:4px}
+tr.selected td{background:#fff3f8}

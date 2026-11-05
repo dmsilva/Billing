@@ -18,6 +18,8 @@ export default function FaturasEmail() {
   const [view, setView] = useState('pendente')
   const [busy, setBusy] = useState(false)
   const [chave, setChave] = useState('')
+  const [sel, setSel] = useState(() => new Set())
+  const [pagamento, setPagamento] = useState('CGD')
 
   const load = useCallback(async () => {
     const { data, error } = await supabase.from('email_faturas').select(EMAIL_SELECT).order('recebido_em', { ascending: false }).limit(500)
@@ -36,14 +38,26 @@ export default function FaturasEmail() {
 
   const counts = useMemo(() => Object.fromEntries(Object.keys(VIEWS).map(k => [k, (rows || []).filter(r => r.estado === k).length])), [rows])
   const list = (rows || []).filter(r => r.estado === view)
+  const chosen = list.filter(r => sel.has(r.id))
+  // Atalhos para escolher de uma vez todas as do mesmo remetente (ex.: todas as da CUR).
+  const senders = useMemo(() => {
+    const m = new Map()
+    for (const r of list) { const k = senderName(r.remetente) || 'Sem remetente'; m.set(k, [...(m.get(k) || []), r.id]) }
+    return [...m.entries()].sort((a, b) => b[1].length - a[1].length)
+  }, [list])
+  const toggle = (ids, on) => setSel(cur => { const n = new Set(cur); for (const id of ids) (on ? n.add(id) : n.delete(id)); return n })
 
-  async function review(ids) {
+  async function review(ids, gravarSozinha = false) {
+    if (ids.length > 20) { toast('Escolhe até 20 de cada vez.', 'bad'); return }
     setBusy(true)
     const { data, error } = await supabase.from('email_faturas').select('id, nome_ficheiro, mime, conteudo_b64, remetente, assunto').in('id', ids)
     setBusy(false)
     if (error) return toast(`Não foi possível abrir: ${error.message}`, 'bad')
     const byId = new Map((data || []).map(r => [r.id, r]))
-    openDroppedInvoices(ids.map(id => byId.get(id)).filter(Boolean).map(rowToFile))
+    const files = ids.map(id => byId.get(id)).filter(Boolean).map(rowToFile)
+    for (const f of files) Object.assign(f.emailFatura, { pagamento: pagamento || null, gravarSozinha })
+    openDroppedInvoices(files)
+    setSel(new Set())
   }
 
   async function open(row) {
@@ -74,20 +88,42 @@ export default function FaturasEmail() {
           ))}
           <span style={{ flex: 1 }} />
           <button type="button" className="secondary" onClick={load}>↻ Atualizar</button>
-          {view === 'pendente' && list.length > 0 && (
-            <button type="button" className="primary" disabled={busy} onClick={() => review(list.slice(0, 20).map(r => r.id))}>
-              {busy ? 'A abrir…' : list.length === 1 ? 'Rever a fatura' : `Rever ${Math.min(20, list.length)} faturas`}
-            </button>
-          )}
         </div>
+        {view === 'pendente' && list.length > 0 && (
+          <div className="email-bulk">
+            <div className="email-chips">
+              <span className="small muted">Escolher:</span>
+              <button type="button" className="chip" onClick={() => toggle(list.map(r => r.id), chosen.length !== list.length)}>{chosen.length === list.length ? 'Nenhuma' : `Todas (${list.length})`}</button>
+              {senders.map(([name, ids]) => (
+                <button key={name} type="button" className={`chip ${ids.every(id => sel.has(id)) ? 'on' : ''}`} onClick={() => toggle(ids, !ids.every(id => sel.has(id)))}>{name} ({ids.length})</button>
+              ))}
+            </div>
+            <div className="email-actions">
+              <label className="small">Pagamento{' '}
+                <select value={pagamento} onChange={e => setPagamento(e.target.value)}>
+                  <option value="CGD">🏦 Débito direto / CGD</option>
+                  <option value="Por pagar">🕓 Ainda por pagar</option>
+                  <option value="">Ver na fatura</option>
+                </select>
+              </label>
+              <button type="button" className="primary" disabled={busy || !chosen.length} onClick={() => review(chosen.map(r => r.id), true)}
+                title="Lê cada uma e grava logo as que ficam completas e não estão repetidas; as outras abrem para rever">
+                {busy ? 'A abrir…' : `✓ Gravar ${chosen.length || ''} selecionada${chosen.length === 1 ? '' : 's'}`}
+              </button>
+              <button type="button" className="secondary" disabled={busy || !chosen.length} onClick={() => review(chosen.map(r => r.id))}>Rever uma a uma</button>
+            </div>
+            <div className="small muted">Ao gravar, a aplicação lê cada fatura (fornecedor, data, valor) e grava logo as que ficam completas e não estão repetidas. As que tiverem dúvidas ficam abertas para veres.</div>
+          </div>
+        )}
         {rows === null ? <div className="notice">A carregar…</div> : !list.length ? (
           <div className="empty">{view === 'pendente' ? 'Não há faturas do email por tratar.' : 'Nada aqui.'}</div>
         ) : (
           <div className="tablewrap"><table className="mini-table">
-            <thead><tr><th>Recebido</th><th>De</th><th>Assunto</th><th>Ficheiro</th><th></th></tr></thead>
+            <thead><tr>{view === 'pendente' && <th style={{ width: 28 }}><input type="checkbox" aria-label="Escolher todas" checked={list.length > 0 && chosen.length === list.length} onChange={e => toggle(list.map(r => r.id), e.target.checked)} /></th>}<th>Recebido</th><th>De</th><th>Assunto</th><th>Ficheiro</th><th></th></tr></thead>
             <tbody>
               {list.map(r => (
-                <tr key={r.id}>
+                <tr key={r.id} className={sel.has(r.id) ? 'selected' : ''}>
+                  {view === 'pendente' && <td><input type="checkbox" aria-label={`Escolher ${r.nome_ficheiro}`} checked={sel.has(r.id)} onChange={e => toggle([r.id], e.target.checked)} /></td>}
                   <td>{formatDate(String(r.recebido_em || r.created_at).slice(0, 10))}</td>
                   <td title={r.remetente || ''}>{senderName(r.remetente)}{r.conta ? <div className="small muted">para {r.conta}</div> : null}</td>
                   <td>{r.assunto}</td>

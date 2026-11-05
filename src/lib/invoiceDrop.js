@@ -120,6 +120,7 @@ export function draftToInvoice(draft, { userId }) {
   const obs = [
     draft.nif && `NIF do fornecedor: ${draft.nif}`,
     draft.atcud && `ATCUD: ${draft.atcud}`,
+    draft.debitoDireto && 'Paga por débito direto (CGD).',
     draft.emailDe
       ? `Recebida por email de ${draft.emailDe}${draft.fonte?.valor === 'qr' ? ' (valores do código QR)' : ''}.`
       : `Adicionada arrastando o ficheiro${draft.fonte?.valor === 'qr' ? ' (valores do código QR)' : ''}.`,

@@ -41,7 +41,12 @@ export default function ArrastarFaturas({ dropAnywhere = true }) {
   const process = useCallback(async item => {
     const [qr, read] = await Promise.all([scanInvoiceQr(item.file), readInvoiceFiles([item.file])])
     const draft = buildDraft({ qr, leitura: read.leitura || null, invoices: ctx.current.invoices, properties: ctx.current.properties, today: todayIso() })
-    if (item.file.emailFatura) draft.emailDe = item.file.emailFatura.remetente || 'email'
+    const em = item.file.emailFatura
+    if (em) {
+      draft.emailDe = em.remetente || 'email'
+      // Escolhido na página Faturas do email (ex.: débito direto na CGD para gás, luz e telefone).
+      if (em.pagamento) { draft.pagamento = em.pagamento; draft.debitoDireto = em.pagamento === 'CGD' }
+    }
     if (read.error && !qr) draft.avisos.unshift(read.error.replace(' Preenche os campos à mão.', ''))
     patch(item.key, { status: 'pronto', draft, linhas: read.leitura?.linhas || [] })
   }, [])
@@ -124,6 +129,20 @@ export default function ArrastarFaturas({ dropAnywhere = true }) {
     if (full) upsertLocal('invoices', full)
     patch(it.key, { status: 'gravada', invoiceId: inv.id, error: fileErr ? `A fatura ficou gravada, mas o ficheiro não foi anexado (${fileErr}). Junta-o na fatura.` : null })
   }
+
+  // Faturas do email marcadas para gravar sozinhas: assim que estão lidas, completas e sem aviso
+  // de repetida, gravam-se; as outras ficam na janela para rever.
+  const saveRef = useRef(save)
+  saveRef.current = save
+  useEffect(() => {
+    for (const it of items) {
+      if (it.status !== 'pronto' || it.autoTried || !it.file.emailFatura?.gravarSozinha) continue
+      const d = it.draft
+      const complete = d.data && d.fornecedor.trim() && d.valor && d.pagamento && !(dupsByKey[it.key] || []).length
+      patch(it.key, { autoTried: true })
+      if (complete) saveRef.current(it)
+    }
+  }, [items, dupsByKey])
 
   const ready = items.filter(it => it.status === 'pronto')
   // Gravar de uma vez só as completas e sem aviso de repetida; as outras gravam-se uma a uma.

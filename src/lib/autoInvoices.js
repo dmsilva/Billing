@@ -72,7 +72,9 @@ export function mentionsSupplier(fornecedor, descricao) {
   return supplierWords(fornecedor).some(w => d.includes(` ${w}`))
 }
 
-export const canAutoMatch = i => i.origem === 'rececao' && !i.bank_transaction_id && !i.payment_id && i.pagamento !== 'Por pagar'
+// Faturas do email gravadas como débito direto: o débito no banco pode vir semanas depois da fatura.
+export const isDirectDebit = i => /Paga por débito direto/.test(i.observacoes || '')
+export const canAutoMatch = i => (i.origem === 'rececao' || isDirectDebit(i)) && !i.bank_transaction_id && !i.payment_id && i.pagamento !== 'Por pagar'
   && i.estado !== 'Rejeitada' && i.valor != null && i.data
 
 // Pares fatura ↔ movimento sem ambiguidade. used: ids de movimentos já ligados a outra coisa.
@@ -83,7 +85,7 @@ export function matchInvoicesToBank(invoices, transactions, used = new Set()) {
     const cands = free.filter(t => {
       if (!sameAmount(Math.abs(Number(t.valor)), Number(inv.valor))) return false
       const d = daysBetween(inv.data, t.data_mov)
-      if (d < -2 || d > 7) return false
+      if (d < -2 || d > (isDirectDebit(inv) ? 40 : 7)) return false
       // O valor sozinho não chega (há muitas compras com o mesmo valor): o texto do banco
       // tem de ter o nome do fornecedor.
       return mentionsSupplier(inv.fornecedor, t.descricao)

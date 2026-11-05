@@ -3,7 +3,7 @@ import { useAuth } from '../auth/AuthProvider'
 import { useData } from '../data/DataProvider'
 import { supabase } from '../supabase'
 import { useToast } from './ui'
-import { planAutoUpdates } from '../lib/autoInvoices'
+import { isDirectDebit, planAutoUpdates } from '../lib/autoInvoices'
 
 const INVOICE_SELECT = '*, invoice_files(id, nome_ficheiro, mime, storage_path, tamanho, created_at)'
 
@@ -17,7 +17,7 @@ export default function AutoConferencia() {
 
   useEffect(() => {
     if (loading || profile?.role !== 'admin' || running.current || !categories.length) return
-    const key = `${invoices.length}|${bank_transactions.length}|${invoices.filter(i => i.origem === 'rececao' && i.estado === 'Por validar').length}`
+    const key = `${invoices.length}|${bank_transactions.length}|${invoices.filter(i => (i.origem === 'rececao' || isDirectDebit(i)) && i.estado === 'Por validar').length}`
     if (key === lastKey.current) return
     lastKey.current = key
     const plan = planAutoUpdates({ invoices, transactions: bank_transactions, categories, payments: invoice_payments, userId: user?.id })
