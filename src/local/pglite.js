@@ -10,12 +10,13 @@ import ordenadosSql from '../../supabase/10_ordenados_envios.sql?raw'
 import artigosSql from '../../supabase/11_artigos_faturas.sql?raw'
 import emailSql from '../../supabase/12_faturas_email.sql?raw'
 import emailDetalheSql from '../../supabase/13_faturas_email_sem_detalhe.sql?raw'
+import regrasSql from '../../supabase/14_regras_fornecedor.sql?raw'
 import grantsSql from '../../supabase/test/01_grants.sql?raw'
 import seedSql from '../../supabase/03_seed_legacy.sql?raw'
 
 export { PGlite } from '@electric-sql/pglite'
 export { pgcrypto } from '@electric-sql/pglite/contrib/pgcrypto'
-export const SETUP_SQL = [stubSql, schemaSql, policiesSql, paymentsSql, creditsSql, encargosSql, salariosSql, ordenadosSql, artigosSql, emailSql, emailDetalheSql, grantsSql, seedSql]
+export const SETUP_SQL = [stubSql, schemaSql, policiesSql, paymentsSql, creditsSql, encargosSql, salariosSql, ordenadosSql, artigosSql, emailSql, emailDetalheSql, regrasSql, grantsSql, seedSql]
 // Bases locais criadas antes das faturas por pagar recebem só esta atualização.
 export const PAYMENTS_UPDATE_SQL = [paymentsSql, grantsSql]
 // Bases locais criadas antes das entradas do extrato recebem só esta atualização.
@@ -30,3 +31,5 @@ export const ORDENADOS_UPDATE_SQL = [ordenadosSql, grantsSql]
 export const ARTIGOS_UPDATE_SQL = [artigosSql, grantsSql]
 // Bases locais criadas antes das faturas do email recebem só esta atualização.
 export const EMAIL_UPDATE_SQL = [emailSql, emailDetalheSql, grantsSql]
+// Bases locais criadas antes das regras por fornecedor recebem só esta atualização.
+export const REGRAS_UPDATE_SQL = [regrasSql, grantsSql]

@@ -2,7 +2,7 @@
 // que a administradora revê antes de gravar, e procura faturas já registadas iguais.
 // Lógica pura, usada no navegador e nos testes.
 import { matchProperty, normalizeReading } from './invoiceReading.js'
-import { supplierKey } from './autoInvoices.js'
+import { ruleFor, supplierKey } from './autoInvoices.js'
 import { parseMoney } from './money.js'
 
 const formatAmount = n => (n === null || n === undefined ? '' : Number(n).toFixed(2).replace('.', ','))
@@ -32,7 +32,7 @@ export function supplierFromHistory(nif, invoices) {
 }
 
 // qr: resultado de parseQrAT (ou null); leitura: resposta de ler-fatura (ou null).
-export function buildDraft({ qr, leitura, invoices = [], properties = [], today }) {
+export function buildDraft({ qr, leitura, invoices = [], properties = [], rules = [], today }) {
   const r = leitura ? normalizeReading(leitura) : null
   const fonte = {}
   const avisos = []
@@ -68,6 +68,9 @@ export function buildDraft({ qr, leitura, invoices = [], properties = [], today 
     pagamento = PAY_FROM_READING[r?.pagamento] || ''
     if (pagamento) fonte.pagamento = 'ia'
   } else if (r?.pagamento === 'numerario') avisos.push('A fatura diz que foi paga em numerário. Se já foi paga, muda o pagamento antes de gravar.')
+  // Regra do fornecedor (Editar categorias): ex.: Grão de Trigo fica sempre por pagar até ao fim do mês.
+  const rule = ruleFor(fornecedor, rules)
+  if (rule?.pagamento && !pagaNoAto) { pagamento = rule.pagamento; fonte.pagamento = 'regra' }
 
   return {
     fornecedor: fornecedor || '',
@@ -77,7 +80,9 @@ export function buildDraft({ qr, leitura, invoices = [], properties = [], today 
     iva: formatAmount(iva),
     descricao: r?.descricao || '',
     imovel_id: imovel_id === null ? '' : String(imovel_id),
-    categoria_id: known?.categoria_id ?? null,
+    // Fornecedor com categoria fixa (Editar categorias) ganha à última usada.
+    categoria_id: rule?.categoria_id ?? known?.categoria_id ?? null,
+    regraPagamento: (!pagaNoAto && rule?.pagamento) || null,
     pagamento,
     pagaNoAto,
     nif: nif || '',
