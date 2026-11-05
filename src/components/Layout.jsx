@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import AutoConferencia from './AutoConferencia'
+import ArrastarFaturas from './ArrastarFaturas'
 import { useAuth } from '../auth/AuthProvider'
 import { useData } from '../data/DataProvider'
 import { localMode } from '../supabase'
@@ -30,6 +31,10 @@ export const PAGES = [
   { path: '/utilizadores', label: 'Utilizadores', icon: '☺', title: 'Utilizadores', sub: 'Acessos da administradora e da receção' },
   { path: '/configuracao', label: 'Dados e migração', icon: '⛁', title: 'Dados e migração', sub: 'Validação dos dados migrados e importação do navegador antigo' },
 ]
+
+// Páginas onde se importam outros ficheiros (extratos, caixas, recibos) ou se anexa a uma fatura existente:
+// aí largar um ficheiro não cria uma fatura nova.
+const NO_GLOBAL_DROP = ['/movimentos', '/entradas', '/caixa', '/ordenados', '/salarios-banco', '/configuracao', '/faturas/']
 
 export function pageFor(pathname) {
   const p = PAGES.filter(x => x.path).sort((a, b) => b.path.length - a.path.length).find(x => (x.path === '/' ? pathname === '/' : pathname.startsWith(x.path)))
@@ -99,6 +104,7 @@ export default function Layout() {
           <button className="primary" onClick={() => nav('/faturas/nova')}>+ Adicionar fatura</button>
         </div>
         <AutoConferencia />
+        {!loading && <ArrastarFaturas dropAnywhere={!NO_GLOBAL_DROP.some(x => loc.pathname.startsWith(x))} />}
         {localMode && <LocalBanner />}
         {error && <div className="notice bad">Erro ao comunicar com o Supabase: {error}</div>}
         {loading ? <div className="notice">A carregar dados…</div> : <Outlet />}
