@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import InstallApp from '../components/InstallApp'
 import { useAuth } from '../auth/AuthProvider'
 import { supabase } from '../supabase'
 import { ACCEPTED, uploadInvoiceFile, validateFile } from '../data/files'
@@ -126,9 +127,10 @@ export default function Rececao() {
     <div className="rececao">
       <div className="wrap">
         <div className="rec-top">
-          <div><div className="rec-brand">Fatura<span>Claro</span></div><div className="sub">Receção</div></div>
+          <div><div className="rec-brand">Fatura <span>Chalet</span></div><div className="sub">Receção</div></div>
           <div className="rec-user">{profile?.nome || profile?.email}<br />{isAdmin && <a href="/">Abrir aplicação</a>} <button className="link-btn" onClick={signOut}>Sair</button></div>
         </div>
+        <InstallApp className="rec-install" />
         <div className="rec-tabs" role="tablist">
           {[['fatura', '📷 Enviar fatura'], ['transferencias', '🏦 Transferências']].map(([k, label]) => (
             <button key={k} type="button" role="tab" aria-selected={tab === k} className={tab === k ? 'on' : ''}

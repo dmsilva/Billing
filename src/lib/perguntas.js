@@ -74,7 +74,7 @@ export const MAX_LINHAS = 100
 export const MAX_LINHAS_SOMA = 20000
 const PAGE = 1000
 
-export const SYSTEM_PROMPT = `És o assistente da FaturaClaro, a app de gestão financeira do Chalet D'Ávila e do Chalet do Lago (alojamento local em Portugal). Respondes a perguntas sobre os dados reais da app, em português europeu, de forma simples e direta, para quem não é contabilista.
+export const SYSTEM_PROMPT = `És o assistente da Fatura Chalet, a app de gestão financeira do Chalet D'Ávila e do Chalet do Lago (alojamento local em Portugal). Respondes a perguntas sobre os dados reais da app, em português europeu, de forma simples e direta, para quem não é contabilista.
 
 Nunca inventes números: usa sempre as ferramentas para consultar os dados antes de responder, e responde só com o que elas devolvem. Se os dados não chegarem para responder, diz o que falta. Não podes alterar dados: só consultar.
 
@@ -113,7 +113,7 @@ const filtroSchema = {
 export const TOOLS = [
   {
     name: 'consultar',
-    description: `Consulta uma tabela da FaturaClaro (só leitura). Devolve o número de linhas encontradas, as primeiras linhas e, se pedido, somas (no total e por grupo).\nTabelas:\n${Object.entries(TABELAS).map(([k, t]) => `- ${k}: ${t.descricao} Colunas: ${t.colunas.join(', ')}.`).join('\n')}`,
+    description: `Consulta uma tabela da Fatura Chalet (só leitura). Devolve o número de linhas encontradas, as primeiras linhas e, se pedido, somas (no total e por grupo).\nTabelas:\n${Object.entries(TABELAS).map(([k, t]) => `- ${k}: ${t.descricao} Colunas: ${t.colunas.join(', ')}.`).join('\n')}`,
     input_schema: {
       type: 'object',
       properties: {

@@ -208,3 +208,12 @@ docs/AUDITORIA_E_PLANO.md  auditoria inicial e plano
 - **Biblioteca `xlsx` 0.18.5**: tem um aviso de segurança conhecido (ficheiros maliciosos). Só é carregada quando se importa um Excel e só pela administradora. A versão corrigida só existe no CDN da SheetJS, que não estava acessível durante o desenvolvimento.
 - **Classificações por rever**: 9 movimentos de salários e os movimentos Endesa / Chalet do Lago devem ser confirmados na página **Editar categorias**.
 - **Fotos HEIC** (iPhone): são guardadas e descarregáveis, mas o navegador não mostra pré-visualização.
+
+## Instalar no telemóvel
+
+A app chama-se **Fatura Chalet** e instala-se como aplicação (ícone próprio, abre sem a barra do navegador):
+
+- **Receção**: abrir `/rececao` no telemóvel e tocar em **📲 Instalar no telemóvel** (Android/Chrome). No iPhone, no Safari: **Partilhar → Adicionar ao ecrã principal**. Fica com o ícone rosa "FC Receção".
+- **Gestão (administradora)**: o mesmo a partir da página inicial `/` (botão no fundo do menu). Fica com o ícone bordeaux "Fatura Chalet".
+
+Os manifestos estão em `public/manifest-*.webmanifest`, os ícones em `public/icons/` e o service worker em `public/sw.js` (nunca guarda dados do Supabase; as páginas vão sempre primeiro à rede).

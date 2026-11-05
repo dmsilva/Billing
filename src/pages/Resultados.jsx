@@ -62,10 +62,10 @@ export default function Resultados() {
         <div className="chart-box">
           <ResponsiveContainer width="100%" height={260}>
             <BarChart data={chart}>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5eaf2" />
-              <XAxis dataKey="label" tick={{ fontSize: 11, fill: '#71809a' }} axisLine={false} tickLine={false} />
-              <YAxis tickFormatter={euroAxis} tick={{ fontSize: 10, fill: '#71809a' }} axisLine={false} tickLine={false} width={52} />
-              <Tooltip formatter={(v, n) => [euro(v), n]} labelFormatter={(_, p) => (p?.[0] ? monthLabel(p[0].payload.month) : '')} cursor={{ fill: '#eef3ff' }} />
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f2e5eb" />
+              <XAxis dataKey="label" tick={{ fontSize: 11, fill: '#9a7184' }} axisLine={false} tickLine={false} />
+              <YAxis tickFormatter={euroAxis} tick={{ fontSize: 10, fill: '#9a7184' }} axisLine={false} tickLine={false} width={52} />
+              <Tooltip formatter={(v, n) => [euro(v), n]} labelFormatter={(_, p) => (p?.[0] ? monthLabel(p[0].payload.month) : '')} cursor={{ fill: '#ffeef6' }} />
               <Legend wrapperStyle={{ fontSize: 11 }} />
               <Bar dataKey="faturado" name="Faturado" fill="#15905f" radius={[6, 6, 0, 0]} />
               <Bar dataKey="despesas" name="Despesas" fill="#f28b31" radius={[6, 6, 0, 0]} />
