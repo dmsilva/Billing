@@ -120,7 +120,9 @@ export function draftToInvoice(draft, { userId }) {
   const obs = [
     draft.nif && `NIF do fornecedor: ${draft.nif}`,
     draft.atcud && `ATCUD: ${draft.atcud}`,
-    `Adicionada arrastando o ficheiro${draft.fonte?.valor === 'qr' ? ' (valores do código QR)' : ''}.`,
+    draft.emailDe
+      ? `Recebida por email de ${draft.emailDe}${draft.fonte?.valor === 'qr' ? ' (valores do código QR)' : ''}.`
+      : `Adicionada arrastando o ficheiro${draft.fonte?.valor === 'qr' ? ' (valores do código QR)' : ''}.`,
   ].filter(Boolean).join('\n')
   return {
     row: {

@@ -1,11 +1,13 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import InstallApp from './InstallApp'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import AutoConferencia from './AutoConferencia'
-import ArrastarFaturas from './ArrastarFaturas'
+import ArrastarFaturas, { EMAIL_SAVED_EVENT } from './ArrastarFaturas'
 import { useAuth } from '../auth/AuthProvider'
 import { useData } from '../data/DataProvider'
-import { localMode } from '../supabase'
+import { localMode, supabase } from '../supabase'
+
+export const EMAIL_QUEUE_EVENT = 'fatura-chalet:fila-email-mudou'
 import { isUnpaid } from '../lib/finance'
 
 export const PAGES = [
@@ -21,6 +23,7 @@ export const PAGES = [
   { section: 'MOVIMENTOS' },
   { path: '/movimentos', label: 'CGD / Extrato', icon: '▤', title: 'CGD / Extrato', sub: 'Todas as saídas da conta bancária CGD' },
   { path: '/faturas', label: 'Faturas', icon: '▧', title: 'Faturas', sub: 'Receção, numerário e conferência com o extrato', badge: 'recebidas' },
+  { path: '/faturas-email', label: 'Faturas do email', icon: '✉', title: 'Faturas do email', sub: 'PDFs de faturas que chegam ao email · rever e gravar', badge: 'email' },
   { path: '/por-liquidar', label: 'Por liquidar', icon: '🕓', title: 'Por liquidar', sub: 'Faturas por pagar e pagamentos agrupados', badge: 'por-liquidar' },
   { section: 'ANÁLISE' },
   { path: '/produtos', label: 'Produtos', icon: '◌', title: 'Produtos', sub: 'Consumo e gasto por artigo' },
@@ -57,6 +60,25 @@ function LocalBanner() {
   )
 }
 
+// Quantas faturas do email estão por tratar (atualiza a cada 5 minutos e quando a fila muda).
+function useEmailPending(enabled) {
+  const [n, setN] = useState(0)
+  useEffect(() => {
+    if (!enabled || !supabase) return
+    let alive = true
+    const load = async () => {
+      const { data, error } = await supabase.from('email_faturas').select('id').eq('estado', 'pendente').limit(500)
+      if (alive) setN(error ? 0 : (data || []).length)
+    }
+    load()
+    const t = setInterval(load, 5 * 60 * 1000)
+    window.addEventListener(EMAIL_SAVED_EVENT, load)
+    window.addEventListener(EMAIL_QUEUE_EVENT, load)
+    return () => { alive = false; clearInterval(t); window.removeEventListener(EMAIL_SAVED_EVENT, load); window.removeEventListener(EMAIL_QUEUE_EVENT, load) }
+  }, [enabled])
+  return n
+}
+
 export default function Layout() {
   const { profile, signOut } = useAuth()
   const { invoices, transferencias, online, error, loading } = useData()
@@ -67,6 +89,7 @@ export default function Layout() {
   const pendingReceived = invoices.filter(i => i.estado === 'Por validar').length
   const unpaid = invoices.filter(isUnpaid).length
   const unallocated = transferencias.filter(t => !t.alocada_em).length
+  const emailPending = useEmailPending(profile?.role === 'admin')
 
   return (
     <div className="app">
@@ -82,6 +105,7 @@ export default function Layout() {
                 <span className="nav-icon">{p.icon}</span>{p.label}
                 {p.badge === 'recebidas' && pendingReceived > 0 && <b className="nav-badge">{pendingReceived}</b>}
                 {p.badge === 'por-liquidar' && unpaid > 0 && <b className="nav-badge">{unpaid}</b>}
+                {p.badge === 'email' && emailPending > 0 && <b className="nav-badge" title="Faturas do email por tratar">{emailPending}</b>}
                 {p.badge === 'transferencias' && unallocated > 0 && <b className="nav-badge" title="Transferências por alocar">{unallocated}</b>}
               </NavLink>
             ),
