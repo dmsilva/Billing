@@ -27,14 +27,18 @@ const TABLES = {
   encargos_pessoal: { select: '*', order: 'mes', optional: true },
   // Só existe depois de executar supabase/14_regras_fornecedor.sql.
   regras_fornecedor: { select: '*', order: 'fornecedor', optional: true },
+  // Só existem depois de executar supabase/15_caixas_app.sql (caixas vindas da app da receção).
+  caixa_app_dias: { select: '*', order: 'data', optional: true, idKey: 'data' },
+  caixa_app_turnos: { select: '*', order: 'data', optional: true },
+  caixa_app_pendentes: { select: '*', order: 'data', optional: true },
 }
 
 const PAGE = 1000
 
-export async function fetchAll(table, { select = '*', order = 'id', ascending = true, optional = false } = {}) {
+export async function fetchAll(table, { select = '*', order = 'id', ascending = true, optional = false, idKey = 'id' } = {}) {
   const rows = []
   for (let from = 0; ; from += PAGE) {
-    const { data, error } = await supabase.from(table).select(select).order(order, { ascending }).order('id', { ascending: true }).range(from, from + PAGE - 1)
+    const { data, error } = await supabase.from(table).select(select).order(order, { ascending }).order(idKey, { ascending: true }).range(from, from + PAGE - 1)
     if (error) {
       if (optional) return null
       throw error
@@ -125,7 +129,7 @@ export function DataProvider({ children }) {
     }
   }, [state])
 
-  const value = { ...state, ...derived, paymentsReady: !missing.includes('invoice_payments'), creditsReady: !missing.includes('bank_credits') && !missing.includes('transferencias'), encargosReady: !missing.includes('encargos_pessoal'), regrasFornecedorReady: !missing.includes('regras_fornecedor'), loading, error, online, reload, reloadAll, upsertLocal, removeLocal }
+  const value = { ...state, ...derived, paymentsReady: !missing.includes('invoice_payments'), creditsReady: !missing.includes('bank_credits') && !missing.includes('transferencias'), encargosReady: !missing.includes('encargos_pessoal'), regrasFornecedorReady: !missing.includes('regras_fornecedor'), caixasAppReady: !missing.includes('caixa_app_dias'), loading, error, online, reload, reloadAll, upsertLocal, removeLocal }
   return <DataContext.Provider value={value}>{children}</DataContext.Provider>
 }
 

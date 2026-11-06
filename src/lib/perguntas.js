@@ -30,7 +30,7 @@ export const TABELAS = {
   caixa_diaria: {
     tabela: 'cash_closes', data: 'data',
     colunas: ['id', 'data', 'turno', 'dinheiro', 'cv', 'mb', 'city_mb', 'registos'],
-    descricao: 'Fechos da caixa diária por turno (7h, 15h, 23h). dinheiro = numerário recebido; cv e mb = cartões; city_mb = taxa turística paga em MB.',
+    descricao: 'Fechos da caixa diária por turno (7h, 15h, 23h). dinheiro = numerário recebido; cv e mb = cartões; city_mb = taxa turística paga em MB. Desde 06/11/2026 os fechos vêm da app de caixa da receção (mb = multibanco + cartão).',
   },
   conferencias_caixa: {
     tabela: 'cash_checks', data: 'conferido_em',

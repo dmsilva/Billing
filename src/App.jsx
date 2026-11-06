@@ -23,6 +23,7 @@ const Produtos = lazy(() => import('./pages/Produtos'))
 const Categorias = lazy(() => import('./pages/Categorias'))
 const EditarCategorias = lazy(() => import('./pages/EditarCategorias'))
 const Caixa = lazy(() => import('./pages/Caixa'))
+const CaixasRececao = lazy(() => import('./pages/CaixasRececao'))
 const Conferencia = lazy(() => import('./pages/Conferencia'))
 const Utilizadores = lazy(() => import('./pages/Utilizadores'))
 const Configuracao = lazy(() => import('./pages/Configuracao'))
@@ -93,6 +94,7 @@ function Gate() {
             <Route path="categorias" element={<Categorias />} />
             <Route path="editar-categorias" element={<EditarCategorias />} />
             <Route path="caixa" element={<Caixa />} />
+            <Route path="caixas-rececao" element={<CaixasRececao />} />
             <Route path="conferencia" element={<Conferencia />} />
             <Route path="ordenados" element={<Ordenados />} />
             <Route path="salarios-banco" element={<SalariosBanco />} />
