@@ -80,9 +80,9 @@ export default function CaixasRececao() {
         ) : <div className="emptybox">Nada a assinalar neste período. 👍</div>}
       </Panel>
 
+      <TurnosPanel dias={diasMes} turnos={turnosMes} />
       <EnvelopesPanel turnos={turnosMes} upsertLocal={upsertLocal} />
       <TpaPanel dias={diasMes} reload={reload} />
-      <DiasPanel dias={diasMes} turnos={turnosMes} />
     </div>
   )
 }
@@ -200,41 +200,35 @@ function TpaPanel({ dias, reload }) {
   )
 }
 
-function DiasPanel({ dias, turnos }) {
-  const [aberto, setAberto] = useState(null)
-  const metodos = Object.keys(METODOS)
+// Ordem pedida pelo Daniel: numerário, multibanco, cartão, CV, Expedia, Airbnb (e transferência).
+const COLUNAS = ['numerario', 'multibanco', 'cartao', 'cvVirtual', 'expedia', 'airbnb', 'transferencia']
+
+function TurnosPanel({ dias, turnos }) {
+  const n = COLUNAS.length + 4
   return (
-    <Panel title="Dias importados" hint="Totais da app por dia. Carrega num dia para ver os turnos.">
+    <Panel title="Totais por turno" hint="Quem fechou cada turno e o total de cada forma de pagamento. A linha do dia soma os três turnos.">
       <div className="tablewrap"><table className="mini-table">
-        <thead><tr><th>Dia</th>{metodos.map(m => <th key={m} className="money">{METODOS[m]}</th>)}<th className="money">Total</th><th className="money">Taxa tur.</th></tr></thead>
+        <thead><tr><th>Dia</th><th>Turno</th><th>Fechado por</th>{COLUNAS.map(m => <th key={m} className="money">{METODOS[m]}</th>)}<th className="money">Total</th></tr></thead>
         <tbody>{dias.length ? dias.flatMap(d => {
-          const linhas = [(
-            <tr key={d.data} className={`clickable${aberto === d.data ? ' row-selected' : ''}`} onClick={() => setAberto(aberto === d.data ? null : d.data)}>
-              <td>{formatDate(d.data)}{!d.dia_fechado && <span className="muted small"> (aberto)</span>}</td>
-              {metodos.map(m => <td key={m} className="money">{euroExact(d.totais?.[m] || 0)}</td>)}
-              <td className="money"><strong>{euroExact(d.totais?.total || 0)}</strong></td><td className="money">{euroExact(d.totais?.taxaTuristica || 0)}</td>
-            </tr>
-          )]
-          if (aberto === d.data) linhas.push(<tr key={`${d.data}-det`}><td colSpan={metodos.length + 3}><DiaDetalhe turnos={turnos.filter(t => t.data === d.data).sort(compararTurnos)} /></td></tr>)
-          return linhas
-        }) : <Empty colSpan={metodos.length + 3}>Ainda não há dias importados. Carrega em “Importar caixas”.</Empty>}</tbody>
+          const doDia = turnos.filter(t => t.data === d.data).sort(compararTurnos)
+          return [
+            ...doDia.map(t => (
+              <tr key={t.id} className={t.diferenca && Number(t.diferenca) !== 0 ? 'row-alert' : ''}>
+                <td>{formatDate(t.data)}</td>
+                <td>{t.turno} <span className="muted small">{SHIFT_INFO[t.turno]?.nome}</span></td>
+                <td>{t.fechado ? <>{t.fechado_por || '—'} <span className="muted small">{formatDateTime(t.fechado_em)}</span></> : <span className="muted">aberto</span>}</td>
+                {COLUNAS.map(m => <td key={m} className="money">{euroExact(t.totais?.[m] || 0)}</td>)}
+                <td className="money"><strong>{euroExact(t.totais?.total || 0)}</strong></td>
+              </tr>
+            )),
+            <tr key={`${d.data}-dia`} className="cash-total-row">
+              <td colSpan={3}><strong>Dia {formatDate(d.data)}</strong>{!d.dia_fechado && <span className="muted small"> (com turnos abertos)</span>}</td>
+              {COLUNAS.map(m => <td key={m} className="money"><strong>{euroExact(d.totais?.[m] || 0)}</strong></td>)}
+              <td className="money"><strong>{euroExact(d.totais?.total || 0)}</strong></td>
+            </tr>,
+          ]
+        }) : <Empty colSpan={n}>Ainda não há dias importados. Carrega em “Importar caixas”.</Empty>}</tbody>
       </table></div>
     </Panel>
-  )
-}
-
-function DiaDetalhe({ turnos }) {
-  const metodos = Object.keys(METODOS)
-  return (
-    <div className="tablewrap"><table className="mini-table">
-      <thead><tr><th>Turno</th><th>Fechado</th>{metodos.map(m => <th key={m} className="money">{METODOS[m]}</th>)}<th className="money">Diferença</th><th className="money">Envelope</th><th>Observação</th></tr></thead>
-      <tbody>{turnos.map(t => (
-        <tr key={t.id} className={t.diferenca && Number(t.diferenca) !== 0 ? 'row-alert' : ''}>
-          <td>{t.turno}</td><td>{t.fechado ? `${formatDateTime(t.fechado_em)} · ${t.fechado_por || ''}` : 'aberto'}</td>
-          {metodos.map(m => <td key={m} className="money">{euroExact(t.totais?.[m] || 0)}</td>)}
-          <td className="money"><strong>{euroExact(t.diferenca)}</strong></td><td className="money">{euroExact(t.envelope)}</td><td>{t.observacao || ''}</td>
-        </tr>
-      ))}</tbody>
-    </table></div>
   )
 }
