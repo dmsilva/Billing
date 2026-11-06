@@ -60,7 +60,7 @@ export function createLocalClient({ dataDir = `idb://${LOCAL_DB_NAME}`, storage 
     // A condição é resolvida no build: o PGlite e os SQL nunca entram no build de produção.
     const mod = import.meta.env.MODE === 'production' ? null : await import('./pglite.js')
     if (!mod) throw new Error('Modo local indisponível no build de produção')
-    const { PGlite, pgcrypto, SETUP_SQL, PAYMENTS_UPDATE_SQL, CREDITS_UPDATE_SQL, ENCARGOS_UPDATE_SQL, SALARIOS_UPDATE_SQL, ORDENADOS_UPDATE_SQL, ARTIGOS_UPDATE_SQL, EMAIL_UPDATE_SQL, REGRAS_UPDATE_SQL } = mod
+    const { PGlite, pgcrypto, SETUP_SQL, PAYMENTS_UPDATE_SQL, CREDITS_UPDATE_SQL, ENCARGOS_UPDATE_SQL, SALARIOS_UPDATE_SQL, ORDENADOS_UPDATE_SQL, ARTIGOS_UPDATE_SQL, EMAIL_UPDATE_SQL, REGRAS_UPDATE_SQL, CAIXAS_APP_UPDATE_SQL } = mod
     const pg = await PGlite.create({ dataDir, extensions: { pgcrypto } })
     const ready = await pg.query(`select to_regclass('public.cash_closes') is not null as ok`)
     if (!ready.rows[0].ok) {
@@ -87,6 +87,8 @@ export function createLocalClient({ dataDir = `idb://${LOCAL_DB_NAME}`, storage 
     if (!email.rows[0].ok) for (const sql of EMAIL_UPDATE_SQL) await pg.exec(sql)
     const regras = await pg.query(`select to_regclass('public.regras_fornecedor') is not null as ok`)
     if (!regras.rows[0].ok) for (const sql of REGRAS_UPDATE_SQL) await pg.exec(sql)
+    const caixasApp = await pg.query(`select to_regclass('public.caixa_app_dias') is not null as ok`)
+    if (!caixasApp.rows[0].ok) for (const sql of CAIXAS_APP_UPDATE_SQL) await pg.exec(sql)
     // Bases criadas antes da criação de contas não tinham esta tabela.
     await pg.exec(`create schema if not exists local; create table if not exists local.passwords (user_id uuid primary key references auth.users(id) on delete cascade, hash text not null)`)
     return pg

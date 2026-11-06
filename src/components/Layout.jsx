@@ -6,6 +6,7 @@ import ArrastarFaturas, { EMAIL_SAVED_EVENT } from './ArrastarFaturas'
 import { useAuth } from '../auth/AuthProvider'
 import { useData } from '../data/DataProvider'
 import { localMode, supabase } from '../supabase'
+import { deveImportarAuto, importarCaixasApp } from '../data/caixasApp'
 
 export const EMAIL_QUEUE_EVENT = 'fatura-chalet:fila-email-mudou'
 import { isUnpaid } from '../lib/finance'
@@ -17,6 +18,7 @@ export const PAGES = [
   { path: '/analise', label: 'Análise', icon: '◔', title: 'Análise', sub: 'Por fornecedor, categoria, produto e imóvel' },
   { path: '/perguntar', label: 'Perguntar', icon: '?', title: 'Perguntar', sub: 'Pergunta em linguagem normal e recebe a resposta com os dados reais' },
   { section: 'ENTRADAS' },
+  { path: '/caixas-rececao', label: 'Caixas da receção', icon: '◫', title: 'Caixas da receção', sub: 'App de caixa · envelopes, talão do TPA e pagamentos das plataformas', badge: 'caixas' },
   { path: '/caixa', label: 'Caixa diária', icon: '▣', title: 'Caixa diária', sub: 'Fechos dos colaboradores · 7h · 15h · 23h' },
   { path: '/entradas', label: 'Entradas no banco', icon: '↘', title: 'Entradas no banco', sub: 'Expedia, Stripe, transferências de hóspedes · transferências da receção', badge: 'transferencias' },
   { path: '/conferencia', label: 'Conferência', icon: '✓', title: 'Conferência', sub: 'CV → MB → Numerário → próximo envelope' },
@@ -38,7 +40,7 @@ export const PAGES = [
 
 // Páginas onde se importam outros ficheiros (extratos, caixas, recibos) ou se anexa a uma fatura existente:
 // aí largar um ficheiro não cria uma fatura nova.
-const NO_GLOBAL_DROP = ['/movimentos', '/entradas', '/caixa', '/ordenados', '/salarios-banco', '/configuracao', '/faturas/']
+const NO_GLOBAL_DROP = ['/movimentos', '/entradas', '/caixa', '/caixas-rececao', '/ordenados', '/salarios-banco', '/configuracao', '/faturas/']
 
 export function pageFor(pathname) {
   const p = PAGES.filter(x => x.path).sort((a, b) => b.path.length - a.path.length).find(x => (x.path === '/' ? pathname === '/' : pathname.startsWith(x.path)))
@@ -79,9 +81,20 @@ function useEmailPending(enabled) {
   return n
 }
 
+// Vai buscar as caixas da app da receção sozinha (no máximo uma vez por hora).
+function useCaixasAuto(enabled) {
+  const { caixasAppReady, loading, reload } = useData()
+  useEffect(() => {
+    if (!enabled || loading || !caixasAppReady || localMode || !deveImportarAuto()) return
+    importarCaixasApp().then(r => {
+      if (!r?.error && r?.dias) for (const t of ['caixa_app_dias', 'caixa_app_turnos', 'caixa_app_pendentes', 'cash_closes', 'cash_imports']) reload(t)
+    })
+  }, [enabled, loading, caixasAppReady, reload])
+}
+
 export default function Layout() {
   const { profile, signOut } = useAuth()
-  const { invoices, transferencias, online, error, loading } = useData()
+  const { invoices, transferencias, caixa_app_turnos, online, error, loading } = useData()
   const [open, setOpen] = useState(false)
   const loc = useLocation()
   const nav = useNavigate()
@@ -90,6 +103,8 @@ export default function Layout() {
   const unpaid = invoices.filter(isUnpaid).length
   const unallocated = transferencias.filter(t => !t.alocada_em).length
   const emailPending = useEmailPending(profile?.role === 'admin')
+  useCaixasAuto(profile?.role === 'admin')
+  const envelopes = caixa_app_turnos.filter(t => t.fechado && t.envelope_recebido == null).length
 
   return (
     <div className="app">
@@ -106,6 +121,7 @@ export default function Layout() {
                 {p.badge === 'recebidas' && pendingReceived > 0 && <b className="nav-badge">{pendingReceived}</b>}
                 {p.badge === 'por-liquidar' && unpaid > 0 && <b className="nav-badge">{unpaid}</b>}
                 {p.badge === 'email' && emailPending > 0 && <b className="nav-badge" title="Faturas do email por tratar">{emailPending}</b>}
+                {p.badge === 'caixas' && envelopes > 0 && <b className="nav-badge" title="Envelopes por conferir">{envelopes}</b>}
                 {p.badge === 'transferencias' && unallocated > 0 && <b className="nav-badge" title="Transferências por alocar">{unallocated}</b>}
               </NavLink>
             ),

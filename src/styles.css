@@ -377,3 +377,4 @@ body{background:#faf8f9}
 .email-actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
 .email-actions select{margin-left:4px}
 tr.selected td{background:#fff3f8}
+tr.row-alert td{background:#fff5f3}tr.row-alert td:first-child{box-shadow:inset 3px 0 0 #d9828f}.neg{color:#b52e3d}
