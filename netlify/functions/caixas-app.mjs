@@ -37,7 +37,10 @@ export async function importarCaixas({ supabase, token, body = {}, caixaUrl, cai
       console.error('caixas-app: sem ligação', err?.message)
       return json(502, { error: 'Não foi possível ligar à app de caixa. Tenta outra vez.' })
     }
-    if (res.status === 401 || res.status === 403) return json(502, { error: 'A app de caixa recusou a chave (CAIXA_EXPORT_KEY).' })
+    if (res.status === 401 || res.status === 403) {
+      console.error('caixas-app: chave recusada', res.status, 'tamanho da chave', caixaKey.length)
+      return json(502, { error: `A app de caixa recusou a chave (erro ${res.status}): a CAIXA_EXPORT_KEY da Fatura Chalet tem de ser igual à chave de exportação da app de caixa.` })
+    }
     if (!res.ok) return json(502, { error: `A app de caixa respondeu com erro ${res.status}.` })
     let corpo, dados
     try {
@@ -63,8 +66,9 @@ function tabelaEmFalta(error) {
 
 export default async req => {
   if (req.method !== 'POST') return json(405, { error: 'Método não permitido.' })
-  const caixaUrl = process.env.CAIXA_URL
-  const caixaKey = process.env.CAIXA_EXPORT_KEY
+  // Espaços ou mudanças de linha coladas por engano no Netlify fazem a app recusar a chave.
+  const caixaUrl = (process.env.CAIXA_URL || '').trim()
+  const caixaKey = (process.env.CAIXA_EXPORT_KEY || '').trim()
   if (!caixaUrl || !caixaKey) return json(503, { error: 'Falta configurar CAIXA_URL e CAIXA_EXPORT_KEY no Netlify.', desligada: true })
   const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL
   const key = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY
