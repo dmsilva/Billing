@@ -2,7 +2,7 @@
 // Corre no servidor do Netlify: a CAIXA_EXPORT_KEY nunca chega ao navegador. A gravação usa o login
 // de quem importa (chave anon + token do utilizador), por isso só a administradora consegue gravar.
 import { createClient } from '@supabase/supabase-js'
-import { diasDaResposta, hojeLisboa, partirPeriodo, periodoEmFalta } from '../../src/lib/caixaApp.js'
+import { diasDaResposta, hojeLisboa, partirPeriodo, periodoEmFalta, soTotais } from '../../src/lib/caixaApp.js'
 
 const json = (status, body) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })
 const ISO = /^\d{4}-\d{2}-\d{2}$/
@@ -45,7 +45,7 @@ export async function importarCaixas({ supabase, token, body = {}, caixaUrl, cai
     let corpo, dados
     try {
       corpo = await res.json()
-      dados = diasDaResposta(corpo)
+      dados = diasDaResposta(corpo).map(soTotais)
     } catch (err) {
       return json(502, { error: err instanceof SyntaxError ? 'A app de caixa devolveu uma resposta inválida.' : err.message })
     }
