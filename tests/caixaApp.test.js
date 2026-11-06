@@ -97,3 +97,13 @@ describe('função caixas-app', () => {
     expect((await res.json()).error).toMatch(/CAIXA_EXPORT_KEY/)
   })
 })
+
+describe('só totais (sem documentos dos clientes)', async () => {
+  const { soTotais } = await import('../src/lib/caixaApp.js')
+  it('nunca envia os documentos dos clientes', () => {
+    const r = soTotais({ data: '2026-11-06', diaFechado: true, totais: { cvVirtual: 120 }, turnos: [{ turno: '7h' }], documentos: [{ numero: 'FR 1', cliente: 'J. Smith', nif: '123' }] })
+    expect(r.documentos).toEqual([])
+    expect(JSON.stringify(r)).not.toMatch(/Smith|FR 1/)
+    expect(r.turnos).toHaveLength(1)
+  })
+})

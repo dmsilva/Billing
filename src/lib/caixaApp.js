@@ -116,4 +116,9 @@ export function totaisDias(dias) {
   return out
 }
 
-export const documentosVisiveis = dia => (Array.isArray(dia.documentos) ? dia.documentos : [])
+// A Fatura Chalet só guarda os totais de cada forma de pagamento por turno e por dia (pedido do
+// Daniel, 06/11/2026): os documentos dos clientes nunca chegam à base de dados e CV virtual,
+// Expedia e Airbnb não ficam pendentes (só se mostram os totais).
+export function soTotais(dia) {
+  return { data: dia.data, diaFechado: dia.diaFechado, totais: dia.totais || {}, turnos: Array.isArray(dia.turnos) ? dia.turnos : [], documentos: [] }
+}
