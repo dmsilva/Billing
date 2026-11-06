@@ -156,6 +156,8 @@ O modo local nunca entra no build de produção.
 
    A mesma chave liga a página **Perguntar** (só para a administradora): perguntas em linguagem normal ("temos a fatura X?", "quanto fizemos em numerário em setembro?") respondidas pela função `netlify/functions/perguntar.mjs`. O Claude só pode consultar (nunca alterar) e as consultas são feitas com o login de quem pergunta, por isso as permissões do Supabase aplicam-se. Cada pergunta custa à volta de 5 a 12 cêntimos na conta da Anthropic.
    **Caixas da receção:** `CAIXA_URL` e `CAIXA_EXPORT_KEY` (secretas) são lidas só pela função `netlify/functions/caixas-app.mjs`, que chama `GET {CAIXA_URL}/api/export?from=…&to=…` (até 92 dias por pedido) com o cabeçalho `X-Api-Key` e grava com o login de quem importa através de `importar_caixas_app` (`supabase/15_caixas_app.sql`). Os turnos fechados passam para a Caixa diária (origem `app`): Dinheiro = numerário, CV = CV virtual, MB = multibanco + cartão. Transferências, Expedia e Airbnb não entram na caixa (chegam ao banco / PayPal). Dias anteriores a 06/11/2026 nunca são tocados.
+
+   Se aparecer "A app de caixa recusou a chave (erro 401)": o valor de `CAIXA_EXPORT_KEY` (faturaclaro-dc44) tem de ser exatamente igual ao `EXPORT_KEY` da app de caixa (caixa-chaletdavila), sem texto a mais. Depois de mudar uma variável, **as duas** apps têm de ser publicadas outra vez (as funções só leem as variáveis numa publicação nova); a app de caixa é publicada por Netlify Drop, por isso volta-se a largar a pasta dela na página Deploys.
 3. Fazer deploy. Entrar com a conta de administradora e abrir **Configuração** para confirmar que a validação está toda verde.
 
 ---
