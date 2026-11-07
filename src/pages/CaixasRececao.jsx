@@ -20,9 +20,12 @@ export default function CaixasRececao() {
   const [busy, setBusy] = useState(false)
 
   const meses = useMemo(() => [...new Set(dias.map(d => monthOf(d.data)))].sort().reverse().map(m => ({ value: m, label: monthLabel(m) })), [dias])
-  const noMes = d => !filters.month || monthOf(d) === filters.month
-  const diasMes = useMemo(() => dias.filter(d => noMes(d.data)).sort((a, b) => b.data.localeCompare(a.data)), [dias, filters.month]) // eslint-disable-line react-hooks/exhaustive-deps
-  const turnosMes = useMemo(() => turnos.filter(t => noMes(t.data)).sort(compararTurnos).reverse(), [turnos, filters.month]) // eslint-disable-line react-hooks/exhaustive-deps
+  // O filtro de mês é partilhado com as outras páginas: se lá escolheram um mês sem caixas da app
+  // (ex.: outubro), aqui mostra-se tudo em vez de uma página vazia.
+  const mes = meses.some(m => m.value === filters.month) ? filters.month : ''
+  const noMes = d => !mes || monthOf(d) === mes
+  const diasMes = useMemo(() => dias.filter(d => noMes(d.data)).sort((a, b) => b.data.localeCompare(a.data)), [dias, mes]) // eslint-disable-line react-hooks/exhaustive-deps
+  const turnosMes = useMemo(() => turnos.filter(t => noMes(t.data)).sort(compararTurnos).reverse(), [turnos, mes]) // eslint-disable-line react-hooks/exhaustive-deps
   const avisos = useMemo(() => alertas({ dias: diasMes, turnos: turnosMes, hoje: todayIso() }), [diasMes, turnosMes])
   const tot = totaisDias(diasMes)
   const ultima = dias.reduce((a, d) => (d.importado_em > a ? d.importado_em : a), '')
@@ -52,7 +55,7 @@ export default function CaixasRececao() {
           <p>Desde {formatDate(CAIXAS_APP_INICIO)} as caixas vêm da app da receção (os dias anteriores continuam os do Excel). Guarda só os totais de cada forma de pagamento por turno. A importação é automática ao abrires a Fatura Chalet e não duplica dias.</p>
         </div>
         <div className="cash-hero-actions">
-          <Select value={filters.month} onChange={v => set({ month: v })} options={meses} placeholder="Todos os meses" />
+          <Select value={mes} onChange={v => set({ month: v })} options={meses} placeholder="Todos os meses" />
           <button className="primary" disabled={busy} onClick={importar}>{busy ? 'A importar…' : 'Importar caixas'}</button>
         </div>
       </div>
