@@ -18,9 +18,10 @@ Gestão financeira do alojamento: despesas CGD e numerário, faturas com documen
 | **Numerário** | Faturas pagas em dinheiro, que são as únicas faturas que somam à despesa. |
 | **Recebidas** | Faturas enviadas pela receção à espera de validação. |
 | **Por liquidar** | Faturas registadas como “Por pagar”, agrupadas por fornecedor. Escolhem-se várias e regista-se um só pagamento (CGD ou numerário), que pode ser anulado. |
-| **Produtos** | Análise por produto e tipo de produto (linhas das faturas). |
+| **Produtos** | Gasto por artigo (manteiga, leite, detergentes…) num período à escolha, a partir dos artigos lidos das faturas; botão para ler as faturas já guardadas. |
 | **Categorias / Editar categorias** | Totais por categoria e reclassificação de movimentos (com histórico). |
 | **SAF-T** | Importa o SAF-T de faturação (.xml ou .zip). Passa a ser o faturado oficial nos Resultados e mostra, dia a dia, o que não bate com a caixa diária e o TPA no banco: dias sem caixa, faturas sem recibo, anuladas, notas de crédito, saltos na numeração e faturado por canal. |
+| **Caixas da receção** | Desde 06/11/2026 as caixas vêm da app de caixa da receção (`caixa-chaletdavila.netlify.app`) em vez do Excel. Botão **Importar caixas** (e importação automática, no máximo de hora a hora, quando a administradora abre a aplicação) sem duplicar dias. Envelopes de numerário conferidos turno a turno (Recebido ou outro valor + nota), talão de fecho do TPA por dia comparado com multibanco + cartão, e diferenças e observações dos turnos em destaque. Guarda só os totais de cada forma de pagamento por turno e por dia (nunca os documentos dos clientes); CV virtual, Expedia e Airbnb aparecem só como totais. |
 | **Caixa diária** | Fechos por turno (7h, 15h, 23h), importação do Excel da caixa com pré-visualização, histórico e anulação, edição manual e TPA. |
 | **Conferência** | Conferência dos envelopes na ordem CV → MB → Numerário → próximo envelope. `Enter` ou **OK** aceita; escrever o valor real regista a diferença; cada conferência pode ser corrigida e fica com histórico. |
 | **Receção** (`/rececao`) | Página simples para telemóvel: tirar foto ou escolher foto/PDF, confirmar os campos (lidos automaticamente da fatura quando a leitura está ligada) e enviar. Aba **Transferências**: pesquisar se a transferência de um hóspede já chegou e alocá-la a um imóvel/quarto e reserva (sem ver o extrato nem o saldo). |
@@ -113,8 +114,13 @@ O modo local nunca entra no build de produção.
    4. `supabase/05_faturas_por_pagar.sql` (faturas por pagar e pagamentos agrupados)
    5. `supabase/06_entradas_transferencias.sql` (entradas do extrato e transferências da receção)
    6. `supabase/07_encargos_pessoal.sql` (TSU e IRS mensais, para o custo com pessoal em Resultados)
-   7. `supabase/08_saft.sql` (SAF-T: faturado oficial e cruzamento com a caixa e o banco, página SAF-T)
-   7. Opcional: `supabase/04_verificacao.sql` (só leitura, mostra os totais)
+   7. `supabase/09_salarios_banco.sql` e `supabase/10_ordenados_envios.sql` (históricos de salários e ordenados)
+   8. `supabase/11_artigos_faturas.sql` (artigos lidos das faturas: gasto por produto na página Produtos)
+   9. `supabase/12_faturas_email.sql` (fila "Faturas do email": o programa do Gmail indicado nessa página envia para lá os PDFs de faturas)
+   10. `supabase/13_faturas_email_sem_detalhe.sql` (não guarda anexos de "detalhe", como o detalhe da fatura da Vodafone)
+   11. `supabase/14_regras_fornecedor.sql` e `supabase/15_caixas_app.sql` (regras por fornecedor e caixas da app da receção)
+   12. `supabase/16_saft_invoicexpress.sql` (faturado oficial do InvoiceXpress e mapa de IVA, página Faturado e IVA)
+   13. Opcional: `supabase/04_verificacao.sql` (só leitura, mostra os totais)
 
    Os scripts podem ser executados mais do que uma vez sem duplicar dados.
 3. **Database → Publications → supabase_realtime**: confirmar que as tabelas da aplicação estão incluídas (o `01_schema.sql` já as adiciona). Isto mantém vários dispositivos sincronizados em tempo real.
@@ -148,9 +154,13 @@ O modo local nunca entra no build de produção.
 
    ⚠️ As variáveis que começam por `VITE_` ficam visíveis no navegador: nunca lá pôr chaves secretas. A `SUPABASE_SERVICE_ROLE_KEY` não tem esse prefixo e só é lida pela função do servidor `netlify/functions/criar-utilizador.mjs`, que confirma que quem pede é administradora antes de criar a conta. Se quiseres, marca-a como *secret* no Netlify.
 
-   A `ANTHROPIC_API_KEY` também é secreta e só é lida pela função `netlify/functions/ler-fatura.mjs`. Quando a Receção junta uma foto ou PDF, a função lê fornecedor, NIF, data, nº do documento, total e IVA, e preenche os campos que ainda estão vazios; a pessoa confirma antes de enviar. O original guardado não é alterado. Cada leitura custa poucos cêntimos. Sem esta chave, a página funciona como antes e os campos escrevem-se à mão. No modo local a leitura não está disponível.
+   A `ANTHROPIC_API_KEY` também é secreta e só é lida pela função `netlify/functions/ler-fatura.mjs`. Quando a Receção junta uma foto ou PDF, a função lê fornecedor, NIF, data, nº do documento, total e IVA, e preenche os campos que ainda estão vazios; a pessoa confirma antes de enviar. Lê também os artigos de cada linha (produto, artigo genérico, quantidade e valor com IVA), que ficam gravados na fatura ao enviar. O original guardado não é alterado. Cada leitura custa poucos cêntimos. Sem esta chave, a página funciona como antes e os campos escrevem-se à mão. No modo local a leitura não está disponível.
+   **Faturas arrastadas (administração):** em Faturas (ou noutras páginas, menos as de importar extratos, caixas e recibos) larga-se um ou mais PDF/fotos. O navegador lê primeiro o código QR AT da fatura (NIF, data, nº, total, IVA, ATCUD; não gasta créditos) e a mesma função `ler-fatura` lê o fornecedor, a descrição e os artigos. Mostra-se um ecrã de revisão, com aviso quando a fatura já parece registada (mesmo ATCUD, mesmo nº do mesmo fornecedor, ou mesmo fornecedor, data e valor). Só ao carregar em Gravar fica registada como Por validar e Por pagar (fatura-recibo, fatura simplificada, venda a dinheiro, talão e recibo ficam já pagas: pergunta-se se foi em numerário ou CGD), com o original anexado e o NIF/ATCUD nas observações. Não precisa de SQL novo.
 
    A mesma chave liga a página **Perguntar** (só para a administradora): perguntas em linguagem normal ("temos a fatura X?", "quanto fizemos em numerário em setembro?") respondidas pela função `netlify/functions/perguntar.mjs`. O Claude só pode consultar (nunca alterar) e as consultas são feitas com o login de quem pergunta, por isso as permissões do Supabase aplicam-se. Cada pergunta custa à volta de 5 a 12 cêntimos na conta da Anthropic.
+   **Caixas da receção:** `CAIXA_URL` e `CAIXA_EXPORT_KEY` (secretas) são lidas só pela função `netlify/functions/caixas-app.mjs`, que chama `GET {CAIXA_URL}/api/export?from=…&to=…` (até 92 dias por pedido) com o cabeçalho `X-Api-Key` e grava com o login de quem importa através de `importar_caixas_app` (`supabase/15_caixas_app.sql`). Os turnos fechados passam para a Caixa diária (origem `app`): Dinheiro = numerário, CV = CV virtual, MB = multibanco + cartão. Transferências, Expedia e Airbnb não entram na caixa (chegam ao banco / PayPal). Dias anteriores a 06/11/2026 nunca são tocados.
+
+   Se aparecer "A app de caixa recusou a chave (erro 401)": o valor de `CAIXA_EXPORT_KEY` (faturaclaro-dc44) tem de ser exatamente igual ao `EXPORT_KEY` da app de caixa (caixa-chaletdavila), sem texto a mais. Depois de mudar uma variável, **as duas** apps têm de ser publicadas outra vez (as funções só leem as variáveis numa publicação nova); a app de caixa é publicada por Netlify Drop, por isso volta-se a largar a pasta dela na página Deploys.
 3. Fazer deploy. Entrar com a conta de administradora e abrir **Configuração** para confirmar que a validação está toda verde.
 
 ---
@@ -207,3 +217,12 @@ docs/AUDITORIA_E_PLANO.md  auditoria inicial e plano
 - **Biblioteca `xlsx` 0.18.5**: tem um aviso de segurança conhecido (ficheiros maliciosos). Só é carregada quando se importa um Excel e só pela administradora. A versão corrigida só existe no CDN da SheetJS, que não estava acessível durante o desenvolvimento.
 - **Classificações por rever**: 9 movimentos de salários e os movimentos Endesa / Chalet do Lago devem ser confirmados na página **Editar categorias**.
 - **Fotos HEIC** (iPhone): são guardadas e descarregáveis, mas o navegador não mostra pré-visualização.
+
+## Instalar no telemóvel
+
+A app chama-se **Fatura Chalet** e instala-se como aplicação (ícone próprio, abre sem a barra do navegador):
+
+- **Receção**: abrir `/rececao` no telemóvel e tocar em **📲 Instalar no telemóvel** (Android/Chrome). No iPhone, no Safari: **Partilhar → Adicionar ao ecrã principal**. Fica com o ícone rosa "FC Receção".
+- **Gestão (administradora)**: o mesmo a partir da página inicial `/` (botão no fundo do menu). Fica com o ícone bordeaux "Fatura Chalet".
+
+Os manifestos estão em `public/manifest-*.webmanifest`, os ícones em `public/icons/` e o service worker em `public/sw.js` (nunca guarda dados do Supabase; as páginas vão sempre primeiro à rede).

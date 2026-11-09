@@ -1,16 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Empty, Panel, useToast } from '../components/ui'
 import { gerarExcel, gerarPdf, lerMesesDoFicheiro, lerOrdenados, nomeMes } from '../lib/ordenados'
+import { dataHora, deBase64, descarregar, paraBase64, XLSX_TYPE } from '../lib/ficheiros'
+import { supabase } from '../supabase'
 
-const XLSX_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-
-function descarregar(buffer, nome, type) {
-  const a = document.createElement('a')
-  a.href = URL.createObjectURL(new Blob([buffer], { type }))
-  a.download = nome
-  a.click()
-  setTimeout(() => URL.revokeObjectURL(a.href), 1000)
-}
+const HISTORICO = 'ordenados_envios'
 
 const resumoDias = l => (l.length ? `${l.join(', ')}` : '')
 
@@ -22,6 +16,7 @@ export default function Ordenados() {
   const [mes, setMes] = useState('')
   const [busy, setBusy] = useState(false)
   const [dados, setDados] = useState(null)
+  const [guardado, setGuardado] = useState(null)
 
   async function escolherHorario(file) {
     setHorario(file); setDados(null)
@@ -47,14 +42,29 @@ export default function Ordenados() {
     return () => { ativo = false }
   }, [horario, ordenados, mes, toast])
 
+  // Qualquer mudança (outro mês, outra nota) dá um ficheiro novo no histórico.
+  useEffect(() => { setGuardado(null) }, [dados])
+
   const setNota = (i, nota) => setDados(d => ({ ...d, linhas: d.linhas.map((l, k) => (k === i ? { ...l, nota } : l)) }))
   const base = dados ? `Ordenados_contabilidade_${nomeMes(dados.ano, dados.mes).replace(' ', '_')}` : ''
 
   async function baixar(tipo) {
     setBusy(true)
     try {
-      if (tipo === 'pdf') descarregar(await gerarPdf(dados), `${base}.pdf`, 'application/pdf')
-      else descarregar(await gerarExcel(dados), `${base}.xlsx`, XLSX_TYPE)
+      const [excel, pdf] = await Promise.all([gerarExcel(dados), gerarPdf(dados)])
+      if (!guardado) {
+        const { data, error } = await supabase.from(HISTORICO).insert({
+          mes: `${dados.ano}-${String(dados.mes).padStart(2, '0')}`,
+          nome_ficheiro: base,
+          linhas: dados.linhas.map(l => ({ codigo: l.codigo, nome: l.nome, feriados: l.feriados.length, noites: l.noites, ferias: l.ferias.length, nota: l.nota })),
+          excel_base64: paraBase64(excel),
+          pdf_base64: paraBase64(pdf),
+        }).select('id').single()
+        if (error) toast(`O ficheiro foi gerado mas não ficou no histórico: ${error.message}`, 'bad')
+        else { setGuardado(data.id); window.dispatchEvent(new Event('ordenados-historico')) }
+      }
+      if (tipo === 'pdf') descarregar(pdf, `${base}.pdf`, 'application/pdf')
+      else descarregar(excel, `${base}.xlsx`, XLSX_TYPE)
     } catch (e) { toast(e.message, 'bad') }
     setBusy(false)
   }
@@ -84,6 +94,7 @@ export default function Ordenados() {
               Estão no horário mas não na folha da contabilidade, por isso ficam de fora: {dados.semPar.map(f => f.nome).join(', ')}.
             </div>
           )}
+          {guardado && <div className="notice ok">Guardado no histórico.</div>}
           <div className="tablewrap"><table className="mini-table">
             <thead><tr><th>Código</th><th>Nome</th><th className="money">Feriados</th><th className="money">Noites</th><th className="money">Férias</th><th>Faltas justificadas</th><th>Notas</th></tr></thead>
             <tbody>{dados.linhas.length ? dados.linhas.map((l, i) => (
@@ -100,6 +111,68 @@ export default function Ordenados() {
           </table></div>
         </Panel>
       )}
+      <Historico />
     </>
+  )
+}
+
+function Historico() {
+  const toast = useToast()
+  const [envios, setEnvios] = useState(null)
+  const [falta, setFalta] = useState(false)
+  const [apagar, setApagar] = useState(null)
+
+  const carregar = useCallback(async () => {
+    const { data, error } = await supabase.from(HISTORICO).select('id, mes, nome_ficheiro, linhas, created_at').order('created_at', { ascending: false }).limit(100)
+    if (error) { setFalta(true); setEnvios([]); return }
+    setFalta(false)
+    setEnvios(data)
+  }, [])
+
+  useEffect(() => {
+    carregar()
+    window.addEventListener('ordenados-historico', carregar)
+    return () => window.removeEventListener('ordenados-historico', carregar)
+  }, [carregar])
+
+  async function baixar(envio, tipo) {
+    const coluna = tipo === 'pdf' ? 'pdf_base64' : 'excel_base64'
+    const { data, error } = await supabase.from(HISTORICO).select(coluna).eq('id', envio.id).single()
+    if (error) return toast(error.message, 'bad')
+    if (!data[coluna]) return toast('Este envio não tem esse ficheiro guardado.', 'bad')
+    if (tipo === 'pdf') descarregar(deBase64(data[coluna]), `${envio.nome_ficheiro}.pdf`, 'application/pdf')
+    else descarregar(deBase64(data[coluna]), `${envio.nome_ficheiro}.xlsx`, XLSX_TYPE)
+  }
+
+  async function remover(envio) {
+    const { error } = await supabase.from(HISTORICO).delete().eq('id', envio.id)
+    if (error) return toast(error.message, 'bad')
+    setApagar(null)
+    carregar()
+  }
+
+  return (
+    <Panel title="Histórico" hint="Cada ficheiro descarregado para a contabilidade fica aqui guardado, em Excel e em PDF.">
+      {falta ? <div className="notice warn">Para guardar o histórico, executa uma vez o ficheiro supabase/10_ordenados_envios.sql no Supabase.</div> : (
+        <div className="tablewrap"><table className="mini-table">
+          <thead><tr><th>Data</th><th>Mês</th><th>Funcionários</th><th>Notas</th><th /></tr></thead>
+          <tbody>{envios === null ? <Empty colSpan={5}>A carregar…</Empty> : envios.length ? envios.map(e => (
+            <tr key={e.id}>
+              <td>{dataHora(e.created_at)}</td>
+              <td>{nomeMes(Number(e.mes.slice(0, 4)), Number(e.mes.slice(5, 7)))}</td>
+              <td>{e.linhas.length}</td>
+              <td className="muted small">{e.linhas.filter(l => l.nota).map(l => `${l.nome}: ${l.nota}`).join(' · ')}</td>
+              <td style={{ whiteSpace: 'nowrap' }}>
+                <button className="secondary small" onClick={() => baixar(e, 'xlsx')}>Excel</button>{' '}
+                <button className="secondary small" onClick={() => baixar(e, 'pdf')}>PDF</button>{' '}
+                {apagar === e.id
+                  ? <><button className="danger small" onClick={() => remover(e)}>Confirmar</button>{' '}<button className="link-btn" onClick={() => setApagar(null)}>Cancelar</button></>
+                  : <button className="link-btn" onClick={() => setApagar(e.id)}>Apagar</button>}
+              </td>
+            </tr>
+          )) : <Empty colSpan={5}>Ainda não descarregaste nenhum ficheiro.</Empty>}</tbody>
+        </table></div>
+      )}
+    </Panel>
   )
 }

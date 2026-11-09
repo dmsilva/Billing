@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { Navigate, useSearchParams } from 'react-router-dom'
 import { useData } from '../data/DataProvider'
 import { useAuth } from '../auth/AuthProvider'
 import { supabase } from '../supabase'
@@ -12,14 +12,16 @@ import { monthLabel, monthOf } from '../lib/dates'
 import { printExpenseReport } from '../lib/expenseReport'
 import { PayModal } from './PorLiquidar'
 import { BULK_ACTIONS, bulkPatch, matchesInvoice } from '../lib/invoiceBulk'
+import { openDroppedInvoices } from '../components/ArrastarFaturas'
+import { ACCEPTED } from '../data/files'
 
 const INVOICE_SELECT = '*, invoice_files(id, nome_ficheiro, mime, storage_path, tamanho, created_at)'
 
 // Separadores: o que falta confirmar, o que já bate certo, o numerário e tudo.
+// As faturas por pagar têm a sua própria página (Faturas › Por pagar).
 export const TABS = {
   'por-confirmar': { label: 'Por confirmar', test: r => r.estado === 'Por validar' },
   conferidas: { label: 'Conferidas', test: r => r.estado === 'Validada' },
-  'por-liquidar': { label: 'Por liquidar', test: r => r.pagamento === 'Por pagar' && r.estado !== 'Rejeitada' },
   numerario: { label: 'Numerário', test: r => r.pagamento === PAYMENT_CASH && r.estado !== 'Rejeitada' },
   todas: { label: 'Todas', test: () => true },
 }
@@ -109,12 +111,18 @@ export default function Faturas() {
     if (!printExpenseReport([...list].sort((a, b) => String(a.data).localeCompare(String(b.data))), { title: 'Despesas', subtitle: sub })) toast('O navegador bloqueou a janela do PDF. Autoriza janelas pop-up para este site.', 'bad')
   }
 
+  if (params.get('tab') === 'por-liquidar') return <Navigate to="/por-liquidar" replace />
   return (
     <>
       <Panel
         title="Faturas"
         hint="Todas as faturas num só sítio. As que a receção envia são conferidas com o extrato CGD automaticamente: se houver uma saída com o mesmo valor perto da data, ficam ligadas e passam a Conferidas. As restantes ficam em Por confirmar até as abrires e validares (ou ligares ao movimento certo)."
       >
+        <label className="drop drop-invoices">
+          <input type="file" accept={ACCEPTED} multiple onChange={e => { openDroppedInvoices(e.target.files); e.target.value = '' }} />
+          <strong>📥 Arrasta para aqui as faturas do computador (PDF ou foto)</strong>
+          <span className="small">Ou clica para escolher. A aplicação lê o código QR e a fatura, mostra os dados para confirmares e grava como por pagar. Também podes largar os ficheiros noutras páginas (menos nas de importar extratos, caixas e recibos).</span>
+        </label>
         <div className="tabs" role="tablist">
           {Object.entries(TABS).map(([k, t]) => (
             <button key={k} type="button" role="tab" aria-selected={tab === k} className={tab === k ? 'on' : ''} onClick={() => { setSelected(new Set()); setParams(k === 'por-confirmar' ? {} : { tab: k }) }}>

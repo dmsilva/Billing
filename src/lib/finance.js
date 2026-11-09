@@ -281,7 +281,8 @@ export function attentionCounts({ rows, invoices, closes, checks, month }) {
   return {
     porValidar: invoices.filter(i => i.estado === 'Por validar' && inMonth(i.data)).length,
     porLiquidar: invoices.filter(isUnpaid).length,
-    caixasPorConferir: closes.filter(c => inMonth(c.data) && (checksPerClose.get(c.id) || 0) < 3).length,
+    // Os fechos da app de caixa conferem-se em "Caixas da receção" (envelopes e talão do TPA).
+    caixasPorConferir: closes.filter(c => c.origem !== 'app' && inMonth(c.data) && (checksPerClose.get(c.id) || 0) < 3).length,
     porClassificar: rows.filter(r => r.kind === 'bank' && UNCLASSIFIED.includes(r.categoria) && inMonth(r.data)).length,
     diferencas: checks.filter(c => c.valor_real != null && !sameAmount(c.valor_real, c.valor_esperado) && inMonth(closeById.get(c.cash_close_id)?.data)).length,
   }

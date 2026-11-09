@@ -28,7 +28,7 @@ export default function Saft() {
 
   return (
     <>
-      {!saftReady && <div className="notice bad">Para usar esta página é preciso executar uma vez o ficheiro <strong>supabase/08_saft.sql</strong> no SQL Editor do Supabase.</div>}
+      {!saftReady && <div className="notice bad">Para usar esta página é preciso executar uma vez o ficheiro <strong>supabase/16_saft_invoicexpress.sql</strong> no SQL Editor do Supabase.</div>}
       <div className="filters">
         <Select value={month} onChange={v => set({ month: v })} options={months.map(v => ({ value: v, label: monthLabel(v) }))} placeholder="Sem SAF-T importado" aria-label="Mês" />
         {r && <button className="secondary" onClick={exportCsv}>Exportar CSV</button>}

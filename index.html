@@ -3,9 +3,24 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#0b1733" />
+    <meta name="theme-color" content="#fbf7f9" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="Fatura Chalet" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
-    <title>FaturaClaro — Gestão Financeira</title>
+    <link rel="apple-touch-icon" href="/icons/admin-apple-180.png" />
+    <link rel="manifest" href="/manifest-admin.webmanifest" />
+    <script>
+      // A receção instala-se como app própria (ícone rosa, abre em /rececao).
+      if (location.pathname.indexOf('/rececao') === 0) {
+        document.querySelector('link[rel=manifest]').href = '/manifest-rececao.webmanifest'
+        document.querySelector('link[rel=apple-touch-icon]').href = '/icons/rececao-apple-180.png'
+        document.querySelector('meta[name=apple-mobile-web-app-title]').content = 'FC Receção'
+        document.querySelector('meta[name=theme-color]').content = '#faf8f9'
+      }
+    </script>
+    <title>Fatura Chalet — Gestão Financeira</title>
   </head>
   <body>
     <div id="root"></div>

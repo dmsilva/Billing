@@ -17,11 +17,12 @@ const Movimentos = lazy(() => import('./pages/Movimentos'))
 const Faturas = lazy(() => import('./pages/Faturas'))
 const FaturaEditor = lazy(() => import('./pages/FaturaEditor'))
 const PorLiquidar = lazy(() => import('./pages/PorLiquidar'))
+const FaturasEmail = lazy(() => import('./pages/FaturasEmail'))
 const Entradas = lazy(() => import('./pages/Entradas'))
 const Produtos = lazy(() => import('./pages/Produtos'))
-const Categorias = lazy(() => import('./pages/Categorias'))
 const EditarCategorias = lazy(() => import('./pages/EditarCategorias'))
 const Caixa = lazy(() => import('./pages/Caixa'))
+const CaixasRececao = lazy(() => import('./pages/CaixasRececao'))
 const Conferencia = lazy(() => import('./pages/Conferencia'))
 const Utilizadores = lazy(() => import('./pages/Utilizadores'))
 const Configuracao = lazy(() => import('./pages/Configuracao'))
@@ -36,7 +37,7 @@ function MissingConfig() {
   return (
     <div className="center-screen">
       <div className="auth-card">
-        <div className="brand dark"><strong>Fatura<span>Claro</span></strong></div>
+        <div className="brand dark"><strong>Fatura <span>Chalet</span></strong></div>
         <h2>Falta configurar o Supabase</h2>
         <p className="muted">Define as variáveis <code>VITE_SUPABASE_URL</code> e <code>VITE_SUPABASE_ANON_KEY</code> (no ficheiro <code>.env</code> ou nas variáveis de ambiente do Netlify) e volta a publicar.</p>
         <p className="muted">Para experimentar no computador sem Supabase, corre <code>npm run local</code>.</p>
@@ -50,7 +51,7 @@ function Pending() {
   return (
     <div className="center-screen">
       <div className="auth-card">
-        <div className="brand dark"><strong>Fatura<span>Claro</span></strong></div>
+        <div className="brand dark"><strong>Fatura <span>Chalet</span></strong></div>
         <h2>Conta à espera de aprovação</h2>
         <p className="muted">A conta <strong>{profile?.email}</strong> foi criada, mas a administradora ainda não lhe atribuiu acesso.</p>
         <div className="actions">
@@ -88,11 +89,13 @@ function Gate() {
             <Route path="numerario" element={<Navigate to="/faturas?tab=numerario" replace />} />
             <Route path="recebidas" element={<Navigate to="/faturas" replace />} />
             <Route path="por-liquidar" element={<PorLiquidar />} />
+            <Route path="faturas-email" element={<FaturasEmail />} />
             <Route path="produtos" element={<Produtos />} />
-            <Route path="categorias" element={<Categorias />} />
+            <Route path="categorias" element={<Navigate to="/analise?tab=categoria" replace />} />
             <Route path="editar-categorias" element={<EditarCategorias />} />
             <Route path="saft" element={<Saft />} />
             <Route path="caixa" element={<Caixa />} />
+            <Route path="caixas-rececao" element={<CaixasRececao />} />
             <Route path="conferencia" element={<Conferencia />} />
             <Route path="ordenados" element={<Ordenados />} />
             <Route path="salarios-banco" element={<SalariosBanco />} />

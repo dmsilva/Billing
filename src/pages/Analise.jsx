@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import FilterBar from '../components/FilterBar'
 import { Empty, Panel } from '../components/ui'
@@ -17,7 +18,9 @@ const TABS = [
 
 export default function Analise() {
   const { rows, all, filters, invoice_lines, invoices } = useFinance()
-  const [tab, setTab] = useState('fornecedor')
+  const [params, setParams] = useSearchParams()
+  const tab = TABS.some(t => t.id === params.get('tab')) ? params.get('tab') : 'fornecedor'
+  const setTab = id => setParams(id === 'fornecedor' ? {} : { tab: id }, { replace: true })
   const [selected, setSelected] = useState(null)
   const invoicesById = useMemo(() => new Map(invoices.map(i => [i.id, i])), [invoices])
 
@@ -59,11 +62,11 @@ export default function Analise() {
         <Panel title={`Evolução mensal · ${selected}`} actions={<button className="link-btn" onClick={() => setSelected(null)}>Fechar</button>}>
           <ResponsiveContainer width="100%" height={220}>
             <BarChart data={evolution}>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5eaf2" />
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#eee9eb" />
               <XAxis dataKey="label" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
               <YAxis tick={{ fontSize: 10 }} axisLine={false} tickLine={false} width={60} tickFormatter={v => euro(v).replace(',00', '')} />
               <Tooltip formatter={(v, n) => [euro(v), n]} labelFormatter={(_, p) => (p?.[0] ? monthLabel(p[0].payload.month) : '')} />
-              <Bar dataKey="cgd" name="CGD" stackId="a" fill="#3864ec" />
+              <Bar dataKey="cgd" name="CGD" stackId="a" fill="#b86c8f" />
               <Bar dataKey="numerario" name="Numerário" stackId="a" fill="#15905f" radius={[6, 6, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>

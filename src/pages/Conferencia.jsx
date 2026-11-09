@@ -26,7 +26,8 @@ export default function Conferencia() {
   const [onlyIssues, setOnlyIssues] = useState(false)
   const inputRef = useRef(null)
 
-  const closes = useMemo(() => cash_closes.filter(c => !filters.month || monthOf(c.data) === filters.month), [cash_closes, filters.month])
+  // Os fechos vindos da app de caixa conferem-se em "Caixas da receção".
+  const closes = useMemo(() => cash_closes.filter(c => c.origem !== 'app' && (!filters.month || monthOf(c.data) === filters.month)), [cash_closes, filters.month])
   const items = useMemo(() => buildQueue(closes, cash_checks), [closes, cash_checks])
   const prog = progress(items)
   const idx = nextPendingIndex(items)

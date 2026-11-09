@@ -23,7 +23,9 @@ export const INVOICE_RULES = [
   [/\bLIDL\b/, 'Supermercado — Lidl'],
   [/\bMAKRO\b/, 'Supermercado — Makro'],
   [/PADARIA PORTUGUESA/, 'Padaria Portuguesa'],
-  [/GRAO (DE )?TRIGO|PADARIA|PANIFICA|PADEIR/, 'Fornecedor — padeiro / Grão Trigo'],
+  // Grão de Trigo: o pão e os bolos do pequeno-almoço (pedido do Daniel, 2026-11-05).
+  [/GRAO (DE )?TRIGO|GRAOTRIGO/, 'Pequeno-almoço / pastelaria'],
+  [/PADARIA|PANIFICA|PADEIR/, 'Fornecedor — padeiro / Grão Trigo'],
   [/PASTELARIA|CONFEITARIA/, 'Pequeno-almoço / pastelaria'],
   [/\bIKEA\b/, 'IKEA'],
   [/FARMACIA/, 'Farmácia'],
@@ -35,6 +37,7 @@ export const INVOICE_RULES = [
   [/LEROY MERLIN|BRICOMARCHE|\bAKI\b|MAXMAT/, 'Manutenção / bricolage'],
   [/SKLUM|MAISONS DU MONDE|ZARA HOME|JYSK/, 'Mobiliário / decoração'],
   [/WORTEN|FNAC|MEDIA MARKT/, 'Equipamento / eletrónica'],
+  [/STARLINE/, 'Sistema de reservas (Starline)'],
   [/HETIENE/, 'Fornecedor — fruta (Hetiene Faria)'],
 ]
 
@@ -57,7 +60,25 @@ export function categoryHistory(invoices, categoriesById) {
   return best
 }
 
-export function suggestInvoiceCategory(inv, history, categories) {
+// Igual a public.chave_fornecedor (supabase/14_regras_fornecedor.sql):
+// minúsculas, sem acentos, sem "de/da/do" e sem espaços. "Grão de Trigo, Lda" → "graotrigolda".
+const LINKS = new Set(['DE', 'DA', 'DO', 'DAS', 'DOS', 'E'])
+export const ruleKey = s => norm(s).split(' ').filter(w => w && !LINKS.has(w)).join('').toLowerCase()
+
+// Regras por fornecedor (tabela regras_fornecedor): a mais específica que sirva, como public.regra_do_fornecedor.
+export function ruleFor(fornecedor, rules = []) {
+  const k = ruleKey(fornecedor)
+  if (k.length < 3) return null
+  const hit = rules.map(r => ({ r, chave: r.chave || ruleKey(r.fornecedor) }))
+    .filter(({ chave }) => chave.length >= 3 && k.includes(chave))
+    .sort((a, b) => b.chave.length - a.chave.length || a.r.id - b.r.id)[0]
+  return hit?.r ?? null
+}
+export const ruleCategoryFor = (fornecedor, rules = []) => ruleFor(fornecedor, rules)?.categoria_id ?? null
+
+export function suggestInvoiceCategory(inv, history, categories, rules = []) {
+  const fixed = ruleCategoryFor(inv.fornecedor, rules)
+  if (fixed) return fixed
   const k = supplierKey(inv.fornecedor)
   if (k && history.has(k)) return history.get(k)
   const name = norm(inv.fornecedor)
@@ -72,7 +93,9 @@ export function mentionsSupplier(fornecedor, descricao) {
   return supplierWords(fornecedor).some(w => d.includes(` ${w}`))
 }
 
-export const canAutoMatch = i => i.origem === 'rececao' && !i.bank_transaction_id && !i.payment_id && i.pagamento !== 'Por pagar'
+// Faturas do email gravadas como débito direto: o débito no banco pode vir semanas depois da fatura.
+export const isDirectDebit = i => /Paga por débito direto/.test(i.observacoes || '')
+export const canAutoMatch = i => (i.origem === 'rececao' || isDirectDebit(i)) && !i.bank_transaction_id && !i.payment_id && i.pagamento !== 'Por pagar'
   && i.estado !== 'Rejeitada' && i.valor != null && i.data
 
 // Pares fatura ↔ movimento sem ambiguidade. used: ids de movimentos já ligados a outra coisa.
@@ -83,7 +106,7 @@ export function matchInvoicesToBank(invoices, transactions, used = new Set()) {
     const cands = free.filter(t => {
       if (!sameAmount(Math.abs(Number(t.valor)), Number(inv.valor))) return false
       const d = daysBetween(inv.data, t.data_mov)
-      if (d < -2 || d > 7) return false
+      if (d < -2 || d > (isDirectDebit(inv) ? 40 : 7)) return false
       // O valor sozinho não chega (há muitas compras com o mesmo valor): o texto do banco
       // tem de ter o nome do fornecedor.
       return mentionsSupplier(inv.fornecedor, t.descricao)
@@ -96,7 +119,7 @@ export function matchInvoicesToBank(invoices, transactions, used = new Set()) {
 }
 
 // Alterações a gravar: faturas (categoria e/ou ligação ao extrato) e movimentos sem categoria.
-export function planAutoUpdates({ invoices, transactions, categories, payments = [], userId = null, now = new Date().toISOString() }) {
+export function planAutoUpdates({ invoices, transactions, categories, payments = [], rules = [], userId = null, now = new Date().toISOString() }) {
   const categoriesById = new Map(categories.map(c => [c.id, c]))
   const history = categoryHistory(invoices, categoriesById)
   const used = new Set([...invoices.map(i => i.bank_transaction_id), ...payments.map(p => p.bank_transaction_id)].filter(Boolean))
@@ -109,7 +132,7 @@ export function planAutoUpdates({ invoices, transactions, categories, payments =
   for (const inv of invoices) {
     // Os dados migrados (legado) ficam como estão; só se classificam faturas novas.
     if (inv.origem === 'legado' || inv.estado === 'Rejeitada' || !isUnclassified(inv.categoria_id, categoriesById)) { categoryOf.set(inv.id, inv.categoria_id); continue }
-    const id = suggestInvoiceCategory(inv, history, categories)
+    const id = suggestInvoiceCategory(inv, history, categories, rules)
     categoryOf.set(inv.id, id || inv.categoria_id)
     if (id && id !== inv.categoria_id) patch(inv.id, { categoria_id: id })
   }

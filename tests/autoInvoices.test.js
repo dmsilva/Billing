@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { matchInvoicesToBank, mentionsSupplier, planAutoUpdates, suggestInvoiceCategory, categoryHistory } from '../src/lib/autoInvoices.js'
+import { matchInvoicesToBank, mentionsSupplier, planAutoUpdates, suggestInvoiceCategory, categoryHistory, ruleFor, ruleKey } from '../src/lib/autoInvoices.js'
 
 const categories = [
   { id: 1, nome: 'Por classificar' },
@@ -8,6 +8,7 @@ const categories = [
   { id: 4, nome: 'Fornecedor — padeiro / Grão Trigo' },
   { id: 5, nome: 'Bebidas' },
   { id: 6, nome: 'Produtos de limpeza' },
+  { id: 7, nome: 'Pequeno-almoço / pastelaria' },
 ]
 const byId = new Map(categories.map(c => [c.id, c]))
 const inv = (o) => ({ id: 1, origem: 'rececao', estado: 'Por validar', pagamento: 'CGD', categoria_id: null, bank_transaction_id: null, payment_id: null, ...o })
@@ -17,7 +18,9 @@ describe('categoria automática', () => {
     const h = new Map()
     expect(suggestInvoiceCategory({ fornecedor: 'Pingo Doce - Distribuição Alimentar, S.A.' }, h, categories)).toBe(2)
     expect(suggestInvoiceCategory({ fornecedor: 'MODELO CONTINENTE HIPERMERCADOS' }, h, categories)).toBe(3)
-    expect(suggestInvoiceCategory({ fornecedor: 'Grão de Trigo, Lda' }, h, categories)).toBe(4)
+    expect(suggestInvoiceCategory({ fornecedor: 'Grão de Trigo, Lda' }, h, categories)).toBe(7)
+    expect(suggestInvoiceCategory({ fornecedor: 'GRAOTRIGO LDA' }, h, categories)).toBe(7)
+    expect(suggestInvoiceCategory({ fornecedor: 'Padaria do Bairro' }, h, categories)).toBe(4)
     expect(suggestInvoiceCategory({ fornecedor: 'Manuel J. Cabral' }, h, categories)).toBe(6)
     expect(suggestInvoiceCategory({ fornecedor: 'Fornecedor desconhecido' }, h, categories)).toBe(null)
   })
@@ -27,7 +30,37 @@ describe('categoria automática', () => {
   })
 })
 
+describe('regras por fornecedor', () => {
+  const rules = [{ id: 1, fornecedor: 'Grão de Trigo', categoria_id: 7, pagamento: 'Por pagar' }, { id: 2, fornecedor: 'Starline', categoria_id: 5, pagamento: null }]
+  it('a chave ignora acentos, "de" e espaços, como no SQL', () => {
+    expect(ruleKey('Grão de Trigo, Lda')).toBe('graotrigolda')
+    expect(ruleKey('GRAOTRIGO LDA')).toBe('graotrigolda')
+  })
+  it('encontra a regra mesmo com o nome escrito de outra forma', () => {
+    expect(ruleFor('Graotrigo Lda', rules)?.id).toBe(1)
+    expect(ruleFor('STARLINE SOFTWARE', rules)?.id).toBe(2)
+    expect(ruleFor('Pingo Doce', rules)).toBe(null)
+    expect(ruleFor('', rules)).toBe(null)
+  })
+  it('a regra ganha à categoria já usada e entra na classificação automática', () => {
+    const h = categoryHistory([{ fornecedor: 'Grão de Trigo', categoria_id: 4, estado: 'Validada' }], byId)
+    expect(suggestInvoiceCategory({ fornecedor: 'Grão de Trigo' }, h, categories, rules)).toBe(7)
+    const plan = planAutoUpdates({ invoices: [inv({ id: 9, fornecedor: 'Grão Trigo' })], transactions: [], categories, rules })
+    expect(plan.invoices).toEqual([{ id: 9, patch: { categoria_id: 7 } }])
+  })
+})
+
 describe('conferência com o extrato', () => {
+  it('faturas do email por débito direto ligam-se ao débito semanas depois', () => {
+    const txs = [{ id: 20, valor: -538.9, data_mov: '2026-10-28', descricao: 'DD VODAFONE PORTUGAL' }]
+    const dd = { origem: 'manual', fornecedor: 'Vodafone Portugal', valor: 538.9, data: '2026-10-09', observacoes: 'Paga por débito direto (CGD).\nRecebida por email de Vodafone.' }
+    expect(matchInvoicesToBank([inv(dd)], txs)).toEqual([{ invoiceId: 1, txId: 20 }])
+    // Uma fatura manual sem débito direto continua a não ser ligada sozinha.
+    expect(matchInvoicesToBank([inv({ ...dd, observacoes: 'Adicionada arrastando o ficheiro.' })], txs)).toEqual([])
+    // Fatura normal da receção continua com a janela curta.
+    expect(matchInvoicesToBank([inv({ fornecedor: 'Vodafone', valor: 538.9, data: '2026-10-09' })], txs)).toEqual([])
+  })
+
   const txs = [
     { id: 10, data_mov: '2026-10-03', descricao: 'COMPRA 1234 PINGO DOCE LISBOA', valor: 45.2 },
     { id: 11, data_mov: '2026-10-20', descricao: 'TRF FORNECEDOR X', valor: 45.2 },

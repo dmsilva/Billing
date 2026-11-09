@@ -6,11 +6,11 @@ import { useFinance } from '../data/useFinance'
 import { useFilters } from '../data/FiltersProvider'
 import FilterBar, { useMonthOptions } from '../components/FilterBar'
 import { Kpi, Panel, RankBars, Select, StateBadge } from '../components/ui'
-import { attentionCounts, bankCredits, breakfastAnalysis, byCategory, byMonth, byProperty, bySupplier, cashEntries, cashCloseTotal, lineMonth, monthResult, totals } from '../lib/finance'
+import { attentionCounts, bankCredits, breakfastAnalysis, byCategory, byMonth, byProperty, cashEntries, cashCloseTotal, lineMonth, monthResult, totals } from '../lib/finance'
 import { euro, sum } from '../lib/money'
 import { formatDate, monthLabel, monthOf, monthShort, monthsOfYear } from '../lib/dates'
 
-export const PALETTE = ['#3b6bea', '#ef6a73', '#f2b84b', '#f28b31', '#68769a', '#5bb58b', '#a9a0a9', '#7351cf']
+export const PALETTE = ['#b76e90', '#ef6a73', '#f2b84b', '#f28b31', '#8c7680', '#5bb58b', '#a6a3a6', '#7351cf']
 const euroAxis = v => (v >= 1000 ? `${Math.round(v / 1000)}k €` : `${v} €`)
 
 export default function Dashboard() {
@@ -58,7 +58,6 @@ export default function Dashboard() {
   const recent = [...invoices].filter(i => !filters.month || monthOf(i.data) === filters.month).sort((a, b) => String(b.data || b.created_at).localeCompare(String(a.data || a.created_at))).slice(0, 6)
   const attention = attentionCounts({ rows: bankRows, invoices, closes: cash_closes, checks: cash_checks, month: filters.month })
   const props = byProperty(rows)
-  const suppliers = bySupplier(rows).slice(0, 10)
 
   return (
     <div className="dashboard-overview">
@@ -95,12 +94,12 @@ export default function Dashboard() {
           <div className="chart-box">
             <ResponsiveContainer width="100%" height={260}>
               <BarChart data={monthly} onClick={e => e?.activePayload?.[0] && set({ month: e.activePayload[0].payload.month })}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5eaf2" />
-                <XAxis dataKey="label" tick={{ fontSize: 11, fill: '#71809a' }} axisLine={false} tickLine={false} />
-                <YAxis tickFormatter={euroAxis} tick={{ fontSize: 10, fill: '#71809a' }} axisLine={false} tickLine={false} width={52} />
-                <Tooltip formatter={(v, n) => [euro(v), n]} labelFormatter={(_, p) => (p?.[0] ? monthLabel(p[0].payload.month) : '')} cursor={{ fill: '#eef3ff' }} />
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#eee9eb" />
+                <XAxis dataKey="label" tick={{ fontSize: 11, fill: '#8e7d85' }} axisLine={false} tickLine={false} />
+                <YAxis tickFormatter={euroAxis} tick={{ fontSize: 10, fill: '#8e7d85' }} axisLine={false} tickLine={false} width={52} />
+                <Tooltip formatter={(v, n) => [euro(v), n]} labelFormatter={(_, p) => (p?.[0] ? monthLabel(p[0].payload.month) : '')} cursor={{ fill: '#faf3f6' }} />
                 <Legend wrapperStyle={{ fontSize: 11 }} />
-                <Bar dataKey="cgd" name="CGD" stackId="d" fill="#3864ec" radius={[0, 0, 2, 2]} cursor="pointer">
+                <Bar dataKey="cgd" name="CGD" stackId="d" fill="#b86c8f" radius={[0, 0, 2, 2]} cursor="pointer">
                   {monthly.map(m => <Cell key={m.month} fillOpacity={!filters.month || filters.month === m.month ? 1 : 0.45} />)}
                 </Bar>
                 <Bar dataKey="numerario" name="Numerário" stackId="d" fill="#15905f" radius={[6, 6, 0, 0]} cursor="pointer">
@@ -164,7 +163,7 @@ export default function Dashboard() {
       <div className="dash-grid bottom-grid">
         <Panel title="⚠ Precisa da tua atenção" hint="Itens que merecem revisão" className="attention-panel">
           <AttentionItem icon="▤" to="/faturas" title={`${attention.porValidar} faturas por validar`} text="Documentos registados no período" />
-          {attention.porLiquidar > 0 && <AttentionItem icon="🕓" tone="amber" to="/por-liquidar" title={`${attention.porLiquidar} faturas por liquidar`} text="Registadas como por pagar" />}
+          {attention.porLiquidar > 0 && <AttentionItem icon="🕓" tone="amber" to="/por-liquidar" title={`${attention.porLiquidar} faturas por pagar`} text="Ainda não entram nos totais" />}
           <AttentionItem icon="€" tone="amber" to="/conferencia" title={`${attention.caixasPorConferir} caixas por conferir`} text="Fechos ainda sem conferência completa" />
           <AttentionItem icon="≠" tone="red" to="/conferencia" title={`${attention.diferencas} diferenças na conferência`} text="Valores reais diferentes do esperado" />
           <AttentionItem icon="?" tone="gray" to="/editar-categorias?filtro=por-classificar" title={`${attention.porClassificar} movimentos por classificar`} text="No extrato CGD" />
@@ -179,48 +178,6 @@ export default function Dashboard() {
         </Panel>
       </div>
 
-      <section className="panel" id="detalhe">
-        <h2>{filters.month ? `Análise detalhada — ${monthLabel(filters.month)}` : 'Análise detalhada do período'}</h2>
-        <div className="detail-note">
-          Aqui separas tesouraria de contabilidade: {euro(t.cgd)} pagos por CGD + {euro(t.numerario)} pagos em numerário = {euro(t.total)} de despesa contabilística. Transferências entre empresas ficam fora destes totais.
-        </div>
-        <div className="detail-grid">
-          <div className="detail-card"><div className="label">Total de saídas</div><div className="big">{euro(t.total)}</div></div>
-          <div className="detail-card"><div className="label">Maior categoria</div><div className="big small">{cats[0] ? `${cats[0].nome} · ${euro(cats[0].total)}` : '—'}</div></div>
-          <div className="detail-card"><div className="label">Maior fornecedor</div><div className="big small">{suppliers[0] ? `${suppliers[0].nome} · ${euro(suppliers[0].total)}` : '—'}</div></div>
-          <div className="detail-card"><div className="label">Entradas de caixa</div><div className="big">{euro(entries.total)}</div></div>
-          <div className="detail-card"><div className="label">Entradas no banco</div><div className="big">{euro(credits.total)}</div></div>
-        </div>
-        <div className="twocol">
-          <Panel title="Onde está a sair o dinheiro?">
-            <RankBars rows={cats.map(c => ({ label: c.nome, value: c.total }))} empty="Sem despesas neste período." onClick={r => set({ category: r.label })} />
-          </Panel>
-          <Panel title="Maiores fornecedores">
-            <div className="tablewrap"><table className="mini-table"><thead><tr><th>Fornecedor / movimento</th><th>Categoria</th><th className="money">Valor</th></tr></thead>
-              <tbody>{suppliers.length ? suppliers.map(s => <tr key={s.nome}><td><strong>{s.nome}</strong></td><td>{s.categoria}</td><td className="money">{euro(s.total)}</td></tr>) : <tr><td colSpan={3} className="emptybox">Sem despesas.</td></tr>}</tbody>
-            </table></div>
-          </Panel>
-        </div>
-        <div className="twocol">
-          <Panel title="Por imóvel">
-            <div className="tablewrap"><table className="mini-table"><thead><tr><th>Imóvel</th><th className="money">CGD</th><th className="money">Numerário</th><th className="money">Total contabilístico</th></tr></thead>
-              <tbody>{props.map(p => <tr key={p.nome}><td>{p.nome}</td><td className="money">{euro(p.cgd)}</td><td className="money">{euro(p.numerario)}</td><td className="money"><strong>{euro(p.total)}</strong></td></tr>)}</tbody>
-            </table></div>
-          </Panel>
-          <Panel title="Pequeno-almoço" hint="Calculado linha a linha a partir dos produtos identificados nas faturas.">
-            {breakfast.items.length ? (
-              <>
-                <div className="breakfast-total"><span>Total identificado de pequeno-almoço</span><strong>{euro(breakfast.total)}</strong></div>
-                <div className="subhead">Por fornecedor</div>
-                <RankBars rows={breakfast.suppliers.map(s => ({ label: s.nome, value: s.total }))} max={breakfast.total || 1} />
-                <div className="subhead">Produtos com maior gasto</div>
-                <RankBars rows={breakfast.items.slice(0, 12).map(i => ({ label: i.produto, value: Number(i.valor) }))} />
-                <div className="hint">Os valores são os que já foram lidos das linhas das faturas; linhas ilegíveis ou ainda não consolidadas não são inventadas.</div>
-              </>
-            ) : <div className="emptybox">Ainda não existem linhas de produtos identificadas para este período.</div>}
-          </Panel>
-        </div>
-      </section>
     </div>
   )
 }
