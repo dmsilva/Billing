@@ -8,12 +8,15 @@ import { saftMonths, saftReconcile } from '../lib/saftReconcile'
 import { euro } from '../lib/money'
 import { formatDate, formatDateTime, monthLabel } from '../lib/dates'
 import { decimalPt, downloadText, toCsv } from '../lib/csv'
+import { buscarSaftInvoiceXpress } from '../data/invoicexpress'
+import { mesAutomatico } from '../lib/invoicexpress'
+import { localMode } from '../supabase'
 
 const tone = v => (Math.abs(v) < 0.005 ? '' : v > 0 ? 'negative' : 'positive')
 
 // SAF-T: o que foi faturado (fonte oficial) contra a caixa diária e as entradas no banco.
 export default function Saft() {
-  const { saft_documentos, saft_imports, cash_closes, bank_credits, saftReady, reload } = useData()
+  const { saft_documentos, saft_imports, invoicexpress_sincronizacoes, cash_closes, bank_credits, saftReady, reload } = useData()
   const { filters, set } = useFilters()
   const [importing, setImporting] = useState(false)
   const months = useMemo(() => saftMonths(saft_documentos), [saft_documentos])
@@ -32,13 +35,15 @@ export default function Saft() {
       <div className="filters">
         <Select value={month} onChange={v => set({ month: v })} options={months.map(v => ({ value: v, label: monthLabel(v) }))} placeholder="Sem SAF-T importado" aria-label="Mês" />
         {r && <button className="secondary" onClick={exportCsv}>Exportar CSV</button>}
-        <button className="primary" disabled={!saftReady} onClick={() => setImporting(true)}>Importar SAF-T</button>
+        <BuscarInvoiceXpress disabled={!saftReady} month={month} onDone={m => { reload('saft_documentos'); reload('saft_imports'); reload('invoicexpress_sincronizacoes'); if (m) set({ month: m }) }} />
+        <button className="secondary" disabled={!saftReady} onClick={() => setImporting(true)}>Importar ficheiro SAF-T</button>
       </div>
+      <EstadoSincronizacao sinc={invoicexpress_sincronizacoes?.[0]} />
       {ultimo && <div className="notice">Último SAF-T: <strong>{ultimo.ficheiro || 'sem nome'}</strong> ({formatDate(ultimo.inicio)} a {formatDate(ultimo.fim)}, {ultimo.documentos} documentos), importado em {formatDateTime(ultimo.importado_em)}.</div>}
 
       {!r ? (
         <Panel title="Ainda não há SAF-T">
-          <p>Exporta o SAF-T de faturação de um mês no programa de faturação (o ficheiro .xml ou o .zip) e importa-o aqui. A app passa a usar o SAF-T como o faturado oficial e mostra o que não bate com a caixa diária e o banco.</p>
+          <p>A app vai buscar o SAF-T ao InvoiceXpress todos os dias (do dia 1 ao 5 fecha o mês anterior). Também podes carregar em <strong>Ir buscar ao InvoiceXpress</strong> para um mês à escolha, ou importar o ficheiro .xml/.zip exportado à mão. A app passa a usar o SAF-T como o faturado oficial e mostra o que não bate com a caixa diária e o banco.</p>
         </Panel>
       ) : (
         <>
@@ -96,6 +101,60 @@ export default function Saft() {
       )}
 
       {importing && <ImportModal onClose={() => setImporting(false)} onDone={m => { setImporting(false); reload('saft_documentos'); reload('saft_imports'); if (m) set({ month: m }) }} />}
+    </>
+  )
+}
+
+const ESTADOS = { ok: 'Importado', a_preparar: 'O InvoiceXpress ainda estava a preparar o ficheiro', sem_documentos: 'Sem documentos nesse mês', erro: 'Erro' }
+
+function EstadoSincronizacao({ sinc }) {
+  if (!sinc) return null
+  const cls = sinc.estado === 'erro' ? 'notice bad' : 'notice'
+  return (
+    <div className={cls}>
+      InvoiceXpress ({sinc.automatico ? 'automático' : 'pedido à mão'}), {formatDateTime(sinc.criado_em)}: <strong>{monthLabel(sinc.mes)}</strong> · {ESTADOS[sinc.estado] || sinc.estado}
+      {sinc.estado === 'ok' && <> · {sinc.documentos} documentos · {euro(sinc.total)}</>}
+      {sinc.estado === 'erro' && sinc.mensagem && <div className="small">{sinc.mensagem}</div>}
+    </div>
+  )
+}
+
+// Mês por omissão: o mês escolhido na página ou o que a corrida automática iria buscar hoje.
+function BuscarInvoiceXpress({ disabled, month, onDone }) {
+  const toast = useToast()
+  const [open, setOpen] = useState(false)
+  const [mes, setMes] = useState(month || mesAutomatico())
+  const [busy, setBusy] = useState(false)
+  const [espera, setEspera] = useState(0)
+
+  async function go() {
+    setBusy(true)
+    setEspera(0)
+    const r = await buscarSaftInvoiceXpress(mes, { onEspera: setEspera })
+    setBusy(false)
+    if (r.error) { onDone(null); return toast(r.error, 'bad') }
+    if (r.estado === 'sem_documentos') toast(`O InvoiceXpress não tem documentos em ${monthLabel(mes)}.`)
+    else if (r.estado === 'erro') toast(r.mensagem || 'Não foi possível ir buscar o SAF-T.', 'bad')
+    else toast(`${monthLabel(mes)}: ${r.documentos} documentos, faturado ${euro(r.total)}.`)
+    setOpen(false)
+    onDone(r.estado === 'ok' ? mes : null)
+  }
+
+  if (localMode) return null
+  return (
+    <>
+      <button className="primary" disabled={disabled} onClick={() => { setMes(month || mesAutomatico()); setOpen(true) }}>Ir buscar ao InvoiceXpress</button>
+      {open && (
+        <Modal title="Ir buscar ao InvoiceXpress" onClose={() => !busy && setOpen(false)}>
+          <p className="muted">A app pede ao InvoiceXpress o SAF-T do mês e importa-o (faturado, recibos e IVA por taxa). Se o mês já estava importado, é substituído pela versão atual.</p>
+          <label>Mês <input type="month" value={mes} onChange={e => setMes(e.target.value)} disabled={busy} /></label>
+          {busy && <div className="notice">{espera ? `O InvoiceXpress está a preparar o ficheiro… (${espera * 5} s)` : 'A pedir ao InvoiceXpress…'}</div>}
+          <div className="actions end">
+            <button className="secondary" disabled={busy} onClick={() => setOpen(false)}>Cancelar</button>
+            <button className="primary" disabled={busy || !/^\d{4}-\d{2}$/.test(mes)} onClick={go}>{busy ? 'A buscar…' : 'Ir buscar'}</button>
+          </div>
+        </Modal>
+      )}
     </>
   )
 }

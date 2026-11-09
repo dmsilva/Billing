@@ -1,6 +1,9 @@
 -- =====================================================================
--- FaturaClaro — 8 SAF-T (faturação oficial)
+-- FaturaClaro — 16 SAF-T (faturação oficial) e mapa de IVA, vindos do InvoiceXpress
 -- Executar depois do 01 e 02 (pode ser executado mais do que uma vez).
+--
+-- O SAF-T de cada mês é ido buscar todos os dias ao InvoiceXpress pela função do Netlify
+-- invoicexpress-saft (chave de API só no Netlify), ou importado à mão a partir do ficheiro.
 --
 -- O ficheiro SAF-T exportado do programa de faturação é a referência do que foi
 -- faturado. Cada importação substitui os documentos do período do ficheiro, para se
@@ -41,6 +44,23 @@ create table if not exists public.saft_documentos (
   import_id bigint references public.saft_imports(id) on delete set null,
   created_at timestamptz not null default now()
 );
+-- IVA por taxa de cada documento ([{ taxa, isencao, base, iva }]) para o mapa de IVA.
+alter table public.saft_documentos add column if not exists por_taxa jsonb not null default '[]'::jsonb;
+alter table public.saft_imports add column if not exists origem text not null default 'ficheiro';
+
+-- Registo de cada vez que a app vai buscar o SAF-T ao InvoiceXpress (automático ou pelo botão).
+create table if not exists public.invoicexpress_sincronizacoes (
+  id bigint generated always as identity primary key,
+  mes text not null,                          -- AAAA-MM
+  estado text not null check (estado in ('ok', 'a_preparar', 'sem_documentos', 'erro')),
+  mensagem text,
+  documentos int,
+  total numeric(14,2),
+  automatico boolean not null default false,
+  criado_em timestamptz not null default now()
+);
+create index if not exists invoicexpress_sincronizacoes_criado_idx on public.invoicexpress_sincronizacoes (criado_em desc);
+
 create index if not exists saft_documentos_data_idx on public.saft_documentos (data);
 
 -- Importa um SAF-T. p_info: { ficheiro, nif, empresa, inicio, fim, recibos, total }.
@@ -58,12 +78,14 @@ declare
   v_antigos jsonb;
   r jsonb;
 begin
-  if not public.is_admin() then raise exception 'Apenas a administradora pode importar o SAF-T.'; end if;
+  -- A função do Netlify (importação automática do InvoiceXpress) entra como service_role.
+  if not (public.is_admin() or current_user = 'service_role') then raise exception 'Apenas a administradora pode importar o SAF-T.'; end if;
   if v_inicio is null or v_fim is null or v_fim < v_inicio then raise exception 'Período do SAF-T inválido.'; end if;
 
-  insert into public.saft_imports (ficheiro, nif, empresa, inicio, fim, documentos, recibos, total)
+  insert into public.saft_imports (ficheiro, nif, empresa, inicio, fim, documentos, recibos, total, origem)
   values (p_info->>'ficheiro', p_info->>'nif', p_info->>'empresa', v_inicio, v_fim,
-          jsonb_array_length(coalesce(p_docs, '[]'::jsonb)), coalesce((p_info->>'recibos')::int, 0), coalesce((p_info->>'total')::numeric, 0))
+          jsonb_array_length(coalesce(p_docs, '[]'::jsonb)), coalesce((p_info->>'recibos')::int, 0), coalesce((p_info->>'total')::numeric, 0),
+          coalesce(nullif(p_info->>'origem', ''), 'ficheiro'))
   returning id into v_import;
 
   -- Recibos de meses seguintes já gravados nos documentos deste período não se perdem.
@@ -74,7 +96,7 @@ begin
   delete from public.saft_documentos where data between v_inicio and v_fim;
   get diagnostics v_apagados = row_count;
 
-  insert into public.saft_documentos (numero, tipo, estado, data, cliente, nif_cliente, liquido, iva, total, city_tax, canal, referencias, recibos, valor_recebido, meios, import_id)
+  insert into public.saft_documentos (numero, tipo, estado, data, cliente, nif_cliente, liquido, iva, total, city_tax, canal, referencias, recibos, valor_recebido, meios, por_taxa, import_id)
   select d->>'numero', d->>'tipo', coalesce(nullif(d->>'estado', ''), 'N'), (d->>'data')::date, d->>'cliente', d->>'nif_cliente',
          coalesce((d->>'liquido')::numeric, 0), coalesce((d->>'iva')::numeric, 0), coalesce((d->>'total')::numeric, 0),
          coalesce((d->>'city_tax')::numeric, 0), nullif(d->>'canal', ''),
@@ -82,12 +104,13 @@ begin
          coalesce(array(select jsonb_array_elements_text(d->'recibos')), '{}'),
          coalesce((d->>'valor_recebido')::numeric, 0),
          coalesce(array(select jsonb_array_elements_text(d->'meios')), '{}'),
+         case when jsonb_typeof(d->'por_taxa') = 'array' then d->'por_taxa' else '[]'::jsonb end,
          v_import
     from jsonb_array_elements(coalesce(p_docs, '[]'::jsonb)) d
   on conflict (numero) do update set tipo = excluded.tipo, estado = excluded.estado, data = excluded.data, cliente = excluded.cliente,
     nif_cliente = excluded.nif_cliente, liquido = excluded.liquido, iva = excluded.iva, total = excluded.total, city_tax = excluded.city_tax,
     canal = excluded.canal, referencias = excluded.referencias, recibos = excluded.recibos, valor_recebido = excluded.valor_recebido,
-    meios = excluded.meios, import_id = excluded.import_id;
+    meios = excluded.meios, por_taxa = excluded.por_taxa, import_id = excluded.import_id;
   get diagnostics v_novos = row_count;
 
   -- Junta os recibos que já existiam (vindos de ficheiros de meses seguintes) e que este ficheiro não tem.
@@ -117,16 +140,26 @@ drop policy if exists "admin_all" on public.saft_imports;
 create policy "admin_all" on public.saft_imports for all to authenticated using (public.is_admin()) with check (public.is_admin());
 drop policy if exists "admin_all" on public.saft_documentos;
 create policy "admin_all" on public.saft_documentos for all to authenticated using (public.is_admin()) with check (public.is_admin());
+alter table public.invoicexpress_sincronizacoes enable row level security;
+drop policy if exists "admin_read" on public.invoicexpress_sincronizacoes;
+create policy "admin_read" on public.invoicexpress_sincronizacoes for select to authenticated using (public.is_admin());
 
 revoke all on function public.importar_saft(jsonb, jsonb, jsonb) from public, anon;
 grant execute on function public.importar_saft(jsonb, jsonb, jsonb) to authenticated;
+do $$ begin
+  if exists (select 1 from pg_roles where rolname = 'service_role') then
+    grant execute on function public.importar_saft(jsonb, jsonb, jsonb) to service_role;
+    grant select, insert, update, delete on public.saft_imports, public.saft_documentos, public.invoicexpress_sincronizacoes to service_role;
+    grant usage, select on all sequences in schema public to service_role;
+  end if;
+end $$;
 
 -- ---------- Sincronização em tempo real ----------
 do $$
 declare t text;
 begin
   if exists (select 1 from pg_publication where pubname = 'supabase_realtime') then
-    foreach t in array array['saft_imports', 'saft_documentos'] loop
+    foreach t in array array['saft_imports', 'saft_documentos', 'invoicexpress_sincronizacoes'] loop
       if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = t) then
         execute format('alter publication supabase_realtime add table public.%I', t);
       end if;

@@ -57,4 +57,32 @@ begin
 end $$;
 reset role;
 
+-- A função do Netlify (service_role) importa o mês do InvoiceXpress com o IVA por taxa e regista a sincronização.
+set role service_role;
+select set_config('request.jwt.claim.sub', '', false);
+do $$
+declare r jsonb;
+begin
+  r := public.importar_saft('{"ficheiro":"InvoiceXpress 2026-10","origem":"invoicexpress","inicio":"2026-10-01","fim":"2026-10-31","total":113}',
+    '[{"numero":"FT A/50","tipo":"FT","data":"2026-10-05","cliente":"Ana","liquido":104,"iva":6,"total":110,
+       "por_taxa":[{"taxa":6,"isencao":"","base":100,"iva":6},{"taxa":0,"isencao":"M99","base":4,"iva":0}]}]');
+  if (r->>'documentos')::int <> 1 then raise exception 'FALHOU: importação pelo service_role %', r; end if;
+  if (select por_taxa->0->>'iva' from public.saft_documentos where numero = 'FT A/50') <> '6' then raise exception 'FALHOU: IVA por taxa'; end if;
+  if (select origem from public.saft_imports order by id desc limit 1) <> 'invoicexpress' then raise exception 'FALHOU: origem'; end if;
+  insert into public.invoicexpress_sincronizacoes (mes, estado, documentos, total, automatico) values ('2026-10', 'ok', 1, 110, true);
+end $$;
+reset role;
+
+-- A receção não vê as sincronizações; a administradora vê.
+set role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-00000000000b', false);
+do $$ begin
+  if exists (select 1 from public.invoicexpress_sincronizacoes) then raise exception 'FALHOU: receção vê sincronizações'; end if;
+end $$;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-00000000000a', false);
+do $$ begin
+  if not exists (select 1 from public.invoicexpress_sincronizacoes) then raise exception 'FALHOU: administradora não vê sincronizações'; end if;
+end $$;
+reset role;
+
 \echo 'Todos os testes do SAF-T passaram.'

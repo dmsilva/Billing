@@ -77,7 +77,7 @@ export function createLocalClient({ dataDir = `idb://${LOCAL_DB_NAME}`, storage 
     if (!credits.rows[0].ok) for (const sql of CREDITS_UPDATE_SQL) await pg.exec(sql)
     const encargos = await pg.query(`select to_regclass('public.encargos_pessoal') is not null as ok`)
     if (!encargos.rows[0].ok) for (const sql of ENCARGOS_UPDATE_SQL) await pg.exec(sql)
-    const saft = await pg.query(`select to_regclass('public.saft_documentos') is not null as ok`)
+    const saft = await pg.query(`select to_regclass('public.invoicexpress_sincronizacoes') is not null as ok`)
     if (!saft.rows[0].ok) for (const sql of SAFT_UPDATE_SQL) await pg.exec(sql)
     const salarios = await pg.query(`select to_regclass('public.salarios_banco_envios') is not null as ok`)
     if (!salarios.rows[0].ok) for (const sql of SALARIOS_UPDATE_SQL) await pg.exec(sql)

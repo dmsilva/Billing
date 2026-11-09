@@ -34,6 +34,7 @@ const TABLES = {
   // Só existem depois de executar supabase/16_saft_invoicexpress.sql.
   saft_documentos: { select: '*', order: 'data', optional: true },
   saft_imports: { select: '*', order: 'importado_em', ascending: false, optional: true },
+  invoicexpress_sincronizacoes: { select: '*', order: 'criado_em', ascending: false, optional: true },
 }
 
 const PAGE = 1000

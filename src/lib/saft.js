@@ -73,6 +73,23 @@ export const needsReceipt = d => d.tipo === 'FT' || d.tipo === 'ND'
 
 export const MEIOS = { NU: 'Numerário', CC: 'Cartão de crédito', CD: 'Cartão de débito', MB: 'Multibanco', TB: 'Transferência', CH: 'Cheque', OU: 'Outro', PR: 'Permuta', CI: 'Crédito documentário', CO: 'Cheque/cartão oferta', CS: 'Compensação', DE: 'Dinheiro eletrónico', LC: 'Letra comercial', TR: 'Vales' }
 
+// ---------- Mapa de IVA ----------
+
+// Base tributável e IVA de um documento por taxa (6, 13, 23, 0 isento…), a partir das linhas.
+// O IVA de cada taxa é a base × taxa, arredondado ao cêntimo, como no mapa de IVA do programa.
+export function ivaPorTaxa(linhas) {
+  const byTaxa = new Map()
+  for (const l of linhas) {
+    const key = `${l.taxa}|${l.taxa ? '' : l.isencao || ''}`
+    if (!byTaxa.has(key)) byTaxa.set(key, { taxa: l.taxa, isencao: l.taxa ? '' : l.isencao || '', base: 0 })
+    const t = byTaxa.get(key)
+    t.base = sum([t.base, l.valor])
+  }
+  return [...byTaxa.values()]
+    .sort((a, b) => b.taxa - a.taxa || a.isencao.localeCompare(b.isencao))
+    .map(t => ({ ...t, iva: Math.round(t.base * t.taxa) / 100 }))
+}
+
 // ---------- Leitura ----------
 
 export function parseSaft(xml) {
@@ -98,7 +115,7 @@ export function parseSaft(xml) {
     const linhas = blocks(inv, 'Line').map(l => {
       const valor = num(l, 'CreditAmount') || num(l, 'DebitAmount')
       const taxa = num(l, 'TaxPercentage')
-      return { codigo: text(l, 'ProductCode'), descricao: text(l, 'ProductDescription') || text(l, 'Description'), valor, taxa, referencia: text(l, 'Reference') }
+      return { isencao: text(l, 'TaxExemptionCode'), codigo: text(l, 'ProductCode'), descricao: text(l, 'ProductDescription') || text(l, 'Description'), valor, taxa, referencia: text(l, 'Reference') }
     })
     const cityLines = linhas.filter(l => CITY_TAX_RE.test(`${l.codigo} ${l.descricao}`))
     const totals = block(inv, 'DocumentTotals')
@@ -113,6 +130,7 @@ export function parseSaft(xml) {
       iva: num(totals, 'TaxPayable'),
       total: num(totals, 'GrossTotal'),
       city_tax: sum(cityLines.map(l => l.valor * (1 + l.taxa / 100))),
+      por_taxa: ivaPorTaxa(linhas),
       // O email do hóspede costuma ser o da plataforma (…@m.expediapartnercentral.com, …@guest.airbnb.com).
       canal: detectChannel([cliente.nome, cliente.email, ...linhas.map(l => l.descricao)].join(' ')),
       referencias: [...new Set(linhas.map(l => l.referencia).filter(Boolean))],
