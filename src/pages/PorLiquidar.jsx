@@ -56,7 +56,7 @@ export default function PorLiquidar() {
 
   return (
     <>
-      <Panel title="Faturas por liquidar" hint="Faturas registadas como “Por pagar”. Escolhe as que pagaste (por exemplo, todas as do mês de um fornecedor) e regista um único pagamento. Enquanto estão por pagar não entram nos totais; depois de liquidadas contam como CGD ou Numerário, conforme o pagamento.">
+      <Panel title="Faturas por pagar" hint="Faturas registadas como “Por pagar”. Escolhe as que pagaste (por exemplo, todas as do mês de um fornecedor) e regista um único pagamento. Enquanto estão por pagar não entram nos totais; depois de liquidadas contam como CGD ou Numerário, conforme o pagamento.">
         {!paymentsReady && <div className="notice bad">Para usar esta página é preciso executar uma vez o ficheiro <strong>supabase/05_faturas_por_pagar.sql</strong> no SQL Editor do Supabase.</div>}
         <div className="filters flat">
           <input className="search" value={q} onChange={e => setQ(e.target.value)} placeholder="Pesquisar fornecedor ou nº do documento…" />

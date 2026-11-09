@@ -119,9 +119,9 @@ export default function FaturaEditor() {
           </div>
           <div className={`notice ${form.pagamento === 'CGD' ? '' : form.pagamento === 'Por pagar' ? 'warn' : 'ok'}`}>
             {form.payment_id
-              ? <>Liquidada em {formatDate(form.liquidada_em)} num pagamento agrupado. Para mudar o meio de pagamento, anula esse pagamento em <Link to="/por-liquidar">Por liquidar</Link>. <PaymentProofLinks paymentId={form.payment_id} /></>
+              ? <>Liquidada em {formatDate(form.liquidada_em)} num pagamento agrupado. Para mudar o meio de pagamento, anula esse pagamento em <Link to="/por-liquidar">Faturas › Por pagar</Link>. <PaymentProofLinks paymentId={form.payment_id} /></>
               : form.pagamento === 'Por pagar'
-              ? <>Por pagar: ainda não entra nos totais. Liquida-a em <Link to="/por-liquidar">Por liquidar</Link> (sozinha ou junto com outras do mesmo fornecedor).</>
+              ? <>Por pagar: ainda não entra nos totais. Liquida-a em <Link to="/por-liquidar">Faturas › Por pagar</Link> (sozinha ou junto com outras do mesmo fornecedor).</>
               : form.pagamento === 'CGD'
               ? 'Paga por CGD: o valor já está no extrato bancário, por isso esta fatura não soma outra vez. Liga-a ao movimento correspondente.'
               : invoiceCountsAsExpense({ ...form, valor: form.valor === '' ? null : valor })
