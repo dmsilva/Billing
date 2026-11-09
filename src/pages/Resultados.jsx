@@ -7,6 +7,7 @@ import { Kpi, Panel, Select, useToast } from '../components/ui'
 import { useData } from '../data/DataProvider'
 import { supabase } from '../supabase'
 import { yearResults } from '../lib/finance'
+import { saftByMonth } from '../lib/saftReconcile'
 import { euro, parseMoney, sum } from '../lib/money'
 import { monthLabel, monthShort } from '../lib/dates'
 
@@ -15,14 +16,15 @@ const tone = v => (v < 0 ? 'negative' : 'positive')
 
 // Resultados: quanto faturámos, quanto gastámos e o que sobra, mês a mês e no ano.
 export default function Resultados() {
-  const { all, cash_closes, bank_credits, encargos_pessoal, encargosReady } = useFinance()
+  const { all, cash_closes, bank_credits, encargos_pessoal, encargosReady, saft_documentos } = useFinance()
+  const saft = useMemo(() => saftByMonth(saft_documentos), [saft_documentos])
   const { filters } = useFilters()
   const monthOptions = useMonthOptions()
   const years = useMemo(() => [...new Set(monthOptions.map(m => m.value.slice(0, 4)))].sort(), [monthOptions])
   const [year, setYear] = useState((filters.month || monthOptions.at(-1)?.value || String(new Date().getFullYear())).slice(0, 4))
   const [open, setOpen] = useState(null)
   const [bonusText, setBonusText] = useState('')
-  const y = useMemo(() => yearResults(year, { closes: cash_closes, credits: bank_credits, expenseRows: all, encargos: encargos_pessoal }), [year, cash_closes, bank_credits, all, encargos_pessoal])
+  const y = useMemo(() => yearResults(year, { closes: cash_closes, credits: bank_credits, expenseRows: all, encargos: encargos_pessoal, saft }), [year, cash_closes, bank_credits, all, encargos_pessoal, saft])
   const chart = y.months.map(m => ({ ...m, label: monthShort(m.month) }))
   const bonus = parseMoney(bonusText) || 0
   const depoisBonus = sum([y.resultado, -bonus])
@@ -43,7 +45,7 @@ export default function Resultados() {
       </div>
 
       <div className="dash-kpis">
-        <Kpi color="green" icon="↗" label={`Faturado em ${year}`} value={euro(y.faturado)} note="Caixa diária + entradas no banco" />
+        <Kpi color="green" icon="↗" label={`Faturado em ${year}`} value={euro(y.faturado)} note="SAF-T nos meses importados; nos outros, caixa diária + entradas no banco" />
         <Kpi color="orange" icon="↘" label={`Despesas em ${year}`} value={euro(y.despesas)} note="Saídas CGD + pagamentos em numerário" />
         <Kpi color={y.resultado < 0 ? 'red' : 'blue'} icon="=" label={y.resultado < 0 ? 'Prejuízo do ano' : 'Lucro do ano'} value={euro(y.resultado)} note={y.faturado ? `Margem de ${Math.round((y.resultado / y.faturado) * 100)}%` : 'Sem faturado registado'} />
         <Kpi color="purple" icon="!" label="Meses com prejuízo" value={`${y.mesesComPrejuizo.length} de ${y.completos.length}`} note={y.mesesComPrejuizo.map(monthShort).join(', ') || 'Nenhum'} />
@@ -109,7 +111,8 @@ export default function Resultados() {
         </Panel>
         <Panel title="Como é calculado">
           <ul className="calc-list">
-            <li><strong>Faturado</strong> = tudo o que a receção registou na caixa diária (dinheiro, CV, MB, City MB) + entradas no banco que não passam pela caixa (Expedia, Booking, Airbnb, Stripe, transferências de hóspedes).</li>
+            <li>Nos meses com <strong>SAF-T</strong> importado, o faturado é o do SAF-T (faturas − notas de crédito, sem anuladas). A caixa e o banco ficam como “recebido”, para ver a diferença na página SAF-T.</li>
+            <li>Sem SAF-T, <strong>faturado</strong> = tudo o que a receção registou na caixa diária (dinheiro, CV, MB, City MB) + entradas no banco que não passam pela caixa (Expedia, Booking, Airbnb, Stripe, transferências de hóspedes).</li>
             <li>Os créditos <strong>TPA / Multibanco</strong> e os <strong>depósitos</strong> não contam outra vez: são o dinheiro da caixa a chegar ao banco. As entradas marcadas como “não conta” também ficam fora.</li>
             <li><strong>Despesas</strong> = saídas da conta CGD (sem transferências entre empresas) + faturas pagas em numerário. Faturas pagas por CGD não somam outra vez.</li>
             <li>A <strong>taxa turística</strong> (City MB, em numerário ou cobrada pelas plataformas) entra no faturado e sai nas despesas quando se paga à Câmara (“Taxa turística / CML”). No resultado anula-se: não é lucro nem prejuízo.</li>
@@ -128,7 +131,7 @@ function MonthRows({ m, open, onToggle }) {
         <td><strong>{open ? '▾' : '▸'} {monthLabel(m.month)}</strong>{!m.completo ? <span className="badge pending">{m.semCaixa ? 'falta a caixa' : 'falta o extrato'}</span> : m.semEntradasBanco && <span className="badge pending">sem entradas do banco</span>}</td>
         <td className="money">{euro(m.caixa.total)}</td>
         <td className="money">{euro(m.banco)}</td>
-        <td className="money"><strong>{euro(m.faturado)}</strong></td>
+        <td className="money"><strong>{euro(m.faturado)}</strong>{m.saft != null && <div className="muted small">SAF-T</div>}</td>
         <td className="money">{euro(m.despesas)}</td>
         <td className={`money ${m.completo ? tone(m.resultado) : 'muted'}`}>{m.completo ? <strong>{euro(m.resultado)}</strong> : 'incompleto'}</td>
       </tr>
@@ -147,6 +150,14 @@ function MonthRows({ m, open, onToggle }) {
               {m.bancoPorTipo.length ? m.bancoPorTipo.map(t => <Line key={t.tipo} label={t.tipo} v={t.total} />) : <div className="muted small">{m.semEntradasBanco ? 'Extrato com entradas ainda não importado.' : 'Sem entradas a somar.'}</div>}
               {m.foraDoFaturado > 0 && <div className="muted small">Não somados (TPA, depósitos e outros): {euro(m.foraDoFaturado)}</div>}
             </div>
+            {m.saft != null && (
+              <div>
+                <div className="subhead">Faturado (SAF-T)</div>
+                <Line label="Faturado no SAF-T" v={m.saft} />
+                <Line label="Recebido (caixa + banco)" v={m.recebido} />
+                <Line label="Faturado que não se vê a entrar" v={m.diferencaSaft} />
+              </div>
+            )}
             <div>
               <div className="subhead">Despesas</div>
               <Line label="Saídas CGD" v={m.despesasCgd} />

@@ -20,6 +20,7 @@ Gestão financeira do alojamento: despesas CGD e numerário, faturas com documen
 | **Por liquidar** | Faturas registadas como “Por pagar”, agrupadas por fornecedor. Escolhem-se várias e regista-se um só pagamento (CGD ou numerário), que pode ser anulado. |
 | **Produtos** | Gasto por artigo (manteiga, leite, detergentes…) num período à escolha, a partir dos artigos lidos das faturas; botão para ler as faturas já guardadas. |
 | **Categorias / Editar categorias** | Totais por categoria e reclassificação de movimentos (com histórico). |
+| **Faturado e IVA** | Vai buscar sozinha o SAF-T ao InvoiceXpress todos os dias (do dia 1 ao 5 fecha o mês anterior; botão **Ir buscar ao InvoiceXpress** para qualquer mês; precisa de `INVOICEXPRESS_CONTA` e `INVOICEXPRESS_API_KEY` no Netlify) ou importa o ficheiro (.xml ou .zip). Separador **Mapa de IVA**: base e IVA por taxa, mês a mês e no ano, com o IVA das faturas de compras ao lado. Passa a ser o faturado oficial nos Resultados e mostra, dia a dia, o que não bate com a caixa diária e o TPA no banco: dias sem caixa, faturas sem recibo, anuladas, notas de crédito, saltos na numeração e faturado por canal. |
 | **Caixas da receção** | Desde 06/11/2026 as caixas vêm da app de caixa da receção (`caixa-chaletdavila.netlify.app`) em vez do Excel. Botão **Importar caixas** (e importação automática, no máximo de hora a hora, quando a administradora abre a aplicação) sem duplicar dias. Envelopes de numerário conferidos turno a turno (Recebido ou outro valor + nota), talão de fecho do TPA por dia comparado com multibanco + cartão, e diferenças e observações dos turnos em destaque. Guarda só os totais de cada forma de pagamento por turno e por dia (nunca os documentos dos clientes); CV virtual, Expedia e Airbnb aparecem só como totais. |
 | **Caixa diária** | Fechos por turno (7h, 15h, 23h), importação do Excel da caixa com pré-visualização, histórico e anulação, edição manual e TPA. |
 | **Conferência** | Conferência dos envelopes na ordem CV → MB → Numerário → próximo envelope. `Enter` ou **OK** aceita; escrever o valor real regista a diferença; cada conferência pode ser corrigida e fica com histórico. |
@@ -117,7 +118,9 @@ O modo local nunca entra no build de produção.
    8. `supabase/11_artigos_faturas.sql` (artigos lidos das faturas: gasto por produto na página Produtos)
    9. `supabase/12_faturas_email.sql` (fila "Faturas do email": o programa do Gmail indicado nessa página envia para lá os PDFs de faturas)
    10. `supabase/13_faturas_email_sem_detalhe.sql` (não guarda anexos de "detalhe", como o detalhe da fatura da Vodafone)
-   11. Opcional: `supabase/04_verificacao.sql` (só leitura, mostra os totais)
+   11. `supabase/14_regras_fornecedor.sql` e `supabase/15_caixas_app.sql` (regras por fornecedor e caixas da app da receção)
+   12. `supabase/16_saft_invoicexpress.sql` (faturado oficial do InvoiceXpress e mapa de IVA, página Faturado e IVA)
+   13. Opcional: `supabase/04_verificacao.sql` (só leitura, mostra os totais)
 
    Os scripts podem ser executados mais do que uma vez sem duplicar dados.
 3. **Database → Publications → supabase_realtime**: confirmar que as tabelas da aplicação estão incluídas (o `01_schema.sql` já as adiciona). Isto mantém vários dispositivos sincronizados em tempo real.

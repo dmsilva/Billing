@@ -31,6 +31,10 @@ const TABLES = {
   caixa_app_dias: { select: '*', order: 'data', optional: true, idKey: 'data' },
   caixa_app_turnos: { select: '*', order: 'data', optional: true },
   caixa_app_pendentes: { select: '*', order: 'data', optional: true },
+  // Só existem depois de executar supabase/16_saft_invoicexpress.sql.
+  saft_documentos: { select: '*', order: 'data', optional: true },
+  saft_imports: { select: '*', order: 'importado_em', ascending: false, optional: true },
+  invoicexpress_sincronizacoes: { select: '*', order: 'criado_em', ascending: false, optional: true },
 }
 
 const PAGE = 1000
@@ -129,7 +133,7 @@ export function DataProvider({ children }) {
     }
   }, [state])
 
-  const value = { ...state, ...derived, paymentsReady: !missing.includes('invoice_payments'), creditsReady: !missing.includes('bank_credits') && !missing.includes('transferencias'), encargosReady: !missing.includes('encargos_pessoal'), regrasFornecedorReady: !missing.includes('regras_fornecedor'), caixasAppReady: !missing.includes('caixa_app_dias'), loading, error, online, reload, reloadAll, upsertLocal, removeLocal }
+  const value = { ...state, ...derived, paymentsReady: !missing.includes('invoice_payments'), creditsReady: !missing.includes('bank_credits') && !missing.includes('transferencias'), encargosReady: !missing.includes('encargos_pessoal'), regrasFornecedorReady: !missing.includes('regras_fornecedor'), caixasAppReady: !missing.includes('caixa_app_dias'), saftReady: !missing.includes('saft_documentos') && !missing.includes('saft_imports'), loading, error, online, reload, reloadAll, upsertLocal, removeLocal }
   return <DataContext.Provider value={value}>{children}</DataContext.Provider>
 }
 

@@ -28,6 +28,10 @@ export const PAGES = [
     { path: '/perguntar', label: 'Perguntar', sub: 'Pergunta em linguagem normal e recebe a resposta com os dados reais' },
   ] },
   { section: 'DINHEIRO' },
+  { label: 'Faturado e IVA', icon: '§', title: 'Faturado e IVA', tabs: [
+    { path: '/saft', label: 'Faturado', sub: 'Faturado no InvoiceXpress (SAF-T) contra a caixa diária e o banco · o que não bate' },
+    { path: '/mapa-iva', label: 'Mapa de IVA', sub: 'Base e IVA por taxa, mês a mês · para conferir com o InvoiceXpress e a contabilidade' },
+  ] },
   { label: 'Caixas', icon: '◫', title: 'Caixas', tabs: [
     { path: '/caixas-rececao', label: 'App da receção', badge: 'caixas', sub: 'Turnos da app de caixa · envelopes, talão do TPA e plataformas' },
     { path: '/caixa', label: 'Fechos por dia', sub: 'Todos os fechos de caixa · totais por mês · importar o Excel antigo' },
