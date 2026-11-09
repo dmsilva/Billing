@@ -378,3 +378,11 @@ body{background:#faf8f9}
 .email-actions select{margin-left:4px}
 tr.selected td{background:#fff3f8}
 tr.row-alert td{background:#fff5f3}tr.row-alert td:first-child{box-shadow:inset 3px 0 0 #d9828f}.neg{color:#b52e3d}
+
+/* Separadores das páginas com várias partes (Caixas, Banco CGD, Faturas, …) */
+.page-tabs{display:flex;gap:4px;flex-wrap:wrap;border-bottom:1px solid #eee4e9;margin:-6px 0 18px}
+.page-tabs a{display:inline-flex;align-items:center;gap:7px;padding:10px 14px;margin-bottom:-1px;border-bottom:3px solid transparent;color:#7a6871;font-weight:700;font-size:14px;text-decoration:none;white-space:nowrap}
+.page-tabs a:hover{color:#3a2c33}
+.page-tabs a.on{color:#8e4569;border-bottom-color:var(--accent)}
+.page-tabs .nav-badge{margin-left:0}
+@media(max-width:760px){.page-tabs{flex-wrap:nowrap;overflow-x:auto;margin-top:0}.page-tabs a{padding:9px 11px;font-size:13px}}

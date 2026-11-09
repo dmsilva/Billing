@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import FilterBar from '../components/FilterBar'
 import { Empty, Panel } from '../components/ui'
@@ -17,7 +18,9 @@ const TABS = [
 
 export default function Analise() {
   const { rows, all, filters, invoice_lines, invoices } = useFinance()
-  const [tab, setTab] = useState('fornecedor')
+  const [params, setParams] = useSearchParams()
+  const tab = TABS.some(t => t.id === params.get('tab')) ? params.get('tab') : 'fornecedor'
+  const setTab = id => setParams(id === 'fornecedor' ? {} : { tab: id }, { replace: true })
   const [selected, setSelected] = useState(null)
   const invoicesById = useMemo(() => new Map(invoices.map(i => [i.id, i])), [invoices])
 

@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { Navigate, useSearchParams } from 'react-router-dom'
 import { useData } from '../data/DataProvider'
 import { useAuth } from '../auth/AuthProvider'
 import { supabase } from '../supabase'
@@ -18,10 +18,10 @@ import { ACCEPTED } from '../data/files'
 const INVOICE_SELECT = '*, invoice_files(id, nome_ficheiro, mime, storage_path, tamanho, created_at)'
 
 // Separadores: o que falta confirmar, o que já bate certo, o numerário e tudo.
+// As faturas por pagar têm a sua própria página (Faturas › Por pagar).
 export const TABS = {
   'por-confirmar': { label: 'Por confirmar', test: r => r.estado === 'Por validar' },
   conferidas: { label: 'Conferidas', test: r => r.estado === 'Validada' },
-  'por-liquidar': { label: 'Por liquidar', test: r => r.pagamento === 'Por pagar' && r.estado !== 'Rejeitada' },
   numerario: { label: 'Numerário', test: r => r.pagamento === PAYMENT_CASH && r.estado !== 'Rejeitada' },
   todas: { label: 'Todas', test: () => true },
 }
@@ -111,6 +111,7 @@ export default function Faturas() {
     if (!printExpenseReport([...list].sort((a, b) => String(a.data).localeCompare(String(b.data))), { title: 'Despesas', subtitle: sub })) toast('O navegador bloqueou a janela do PDF. Autoriza janelas pop-up para este site.', 'bad')
   }
 
+  if (params.get('tab') === 'por-liquidar') return <Navigate to="/por-liquidar" replace />
   return (
     <>
       <Panel

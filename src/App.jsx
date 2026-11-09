@@ -20,7 +20,6 @@ const PorLiquidar = lazy(() => import('./pages/PorLiquidar'))
 const FaturasEmail = lazy(() => import('./pages/FaturasEmail'))
 const Entradas = lazy(() => import('./pages/Entradas'))
 const Produtos = lazy(() => import('./pages/Produtos'))
-const Categorias = lazy(() => import('./pages/Categorias'))
 const EditarCategorias = lazy(() => import('./pages/EditarCategorias'))
 const Caixa = lazy(() => import('./pages/Caixa'))
 const CaixasRececao = lazy(() => import('./pages/CaixasRececao'))
@@ -91,7 +90,7 @@ function Gate() {
             <Route path="por-liquidar" element={<PorLiquidar />} />
             <Route path="faturas-email" element={<FaturasEmail />} />
             <Route path="produtos" element={<Produtos />} />
-            <Route path="categorias" element={<Categorias />} />
+            <Route path="categorias" element={<Navigate to="/analise?tab=categoria" replace />} />
             <Route path="editar-categorias" element={<EditarCategorias />} />
             <Route path="caixa" element={<Caixa />} />
             <Route path="caixas-rececao" element={<CaixasRececao />} />
