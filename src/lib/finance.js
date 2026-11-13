@@ -27,6 +27,8 @@ export const PAYMENT_AIRBNB = 'Airbnb'
 // Ordem em que as opções aparecem nos ecrãs.
 export const PAYMENTS = ['Numerário', 'CGD', 'Airbnb', 'Por pagar']
 // Nota de crédito = anulação: grava-se com valor (e IVA) negativo e abate às despesas.
+// Validar pede valor, exceto nas faturas pagas pela Airbnb (não somam a nada; pedido do Daniel, 13/11/2026).
+export const canValidateWithoutValue = inv => inv?.pagamento === PAYMENT_AIRBNB
 export const isCreditNote = inv => inv?.valor != null && Number(inv.valor) < 0
 export const UNCLASSIFIED = ['Por classificar', 'Outros / por classificar']
 

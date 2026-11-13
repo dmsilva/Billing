@@ -8,7 +8,7 @@ import { Badge, ConfirmButton, Panel, Select, StateBadge, useToast } from '../co
 import { ACCEPTED, deleteInvoiceFile, listPaymentProofs, signedUrl, uploadInvoiceFile, validateFile } from '../data/files'
 import { euro, euroExact, parseMoney, sameAmount, sumBy } from '../lib/money'
 import { daysBetween, formatDate, formatDateTime, todayIso } from '../lib/dates'
-import { invoiceCountsAsExpense, PAYMENTS } from '../lib/finance'
+import { canValidateWithoutValue, invoiceCountsAsExpense, PAYMENTS } from '../lib/finance'
 import { PRODUCT_TYPES } from '../lib/invoiceReading'
 import { readStoredInvoiceLines } from '../data/invoiceReading'
 const PAY_LABEL = { 'Numerário': '💶 Numerário', CGD: '🏦 CGD', Airbnb: '🏠 Airbnb', 'Por pagar': '🕓 Por pagar' }
@@ -138,7 +138,7 @@ export default function FaturaEditor() {
           <div className="actions end">
             {!isNew && <ConfirmButton className="secondary danger-text" confirmText="Eliminar fatura e ficheiros" onConfirm={remove}>Eliminar</ConfirmButton>}
             {!isNew && form.estado !== 'Rejeitada' && <button className="secondary" disabled={busy} onClick={() => save({ estado: 'Rejeitada', validated_by: user.id, validated_at: new Date().toISOString() }, 'Fatura rejeitada.')}>Rejeitar</button>}
-            {!isNew && form.estado !== 'Validada' && <button className="secondary" disabled={busy || valor === null} title={valor === null ? 'Indica o valor antes de validar' : ''} onClick={() => save({ estado: 'Validada', validated_by: user.id, validated_at: new Date().toISOString() }, 'Fatura validada.')}>✓ Validar</button>}
+            {!isNew && form.estado !== 'Validada' && <button className="secondary" disabled={busy || (valor === null && !canValidateWithoutValue(form))} title={valor === null && !canValidateWithoutValue(form) ? 'Indica o valor antes de validar' : ''} onClick={() => save({ estado: 'Validada', validated_by: user.id, validated_at: new Date().toISOString() }, 'Fatura validada.')}>✓ Validar</button>}
             <button className="primary" disabled={busy} onClick={() => save()}>{busy ? 'A guardar…' : 'Guardar'}</button>
           </div>
         </Panel>
