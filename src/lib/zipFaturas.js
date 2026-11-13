@@ -35,7 +35,7 @@ export function zipPlan(rows) {
       let name = `${base}${files.length > 1 ? ` (${j + 1})` : ''}.${extensionOf(f)}`
       for (let k = 2; used.has(name.toLowerCase()); k++) name = name.replace(/(?: #\d+)?(\.[^.]+)$/, ` #${k}$1`)
       used.add(name.toLowerCase())
-      entries.push({ name, path: f.storage_path, row: r })
+      entries.push({ name, path: f.storage_path, mime: f.mime, row: r })
     })
   })
   return { entries, withoutFiles, sorted }
