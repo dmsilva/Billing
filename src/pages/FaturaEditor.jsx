@@ -8,10 +8,10 @@ import { Badge, ConfirmButton, Panel, Select, StateBadge, useToast } from '../co
 import { ACCEPTED, deleteInvoiceFile, listPaymentProofs, signedUrl, uploadInvoiceFile, validateFile } from '../data/files'
 import { euro, euroExact, parseMoney, sameAmount, sumBy } from '../lib/money'
 import { daysBetween, formatDate, formatDateTime, todayIso } from '../lib/dates'
-import { invoiceCountsAsExpense } from '../lib/finance'
+import { invoiceCountsAsExpense, PAYMENTS } from '../lib/finance'
 import { PRODUCT_TYPES } from '../lib/invoiceReading'
 import { readStoredInvoiceLines } from '../data/invoiceReading'
-const PAY_LABEL = { 'Numerário': '💶 Numerário', CGD: '🏦 CGD', 'Por pagar': '🕓 Por pagar' }
+const PAY_LABEL = { 'Numerário': '💶 Numerário', CGD: '🏦 CGD', Airbnb: '🏠 Airbnb', 'Por pagar': '🕓 Por pagar' }
 const toInput = v => (v === null || v === undefined ? '' : String(v).replace('.', ','))
 
 function blank(propertyId) {
@@ -107,7 +107,7 @@ export default function FaturaEditor() {
             <label>Categoria<CategorySelect className="" value={form.categoria_id} onChange={v => set({ categoria_id: v })} /></label>
             <label>Meio de pagamento
               <div className="pay-toggle">
-                {['Numerário', 'CGD', 'Por pagar'].map(p => <button type="button" key={p} disabled={!!form.payment_id} className={form.pagamento === p ? 'on' : ''} onClick={() => set({ pagamento: p })}>{PAY_LABEL[p]}</button>)}
+                {PAYMENTS.map(p => <button type="button" key={p} disabled={!!form.payment_id} className={form.pagamento === p ? 'on' : ''} onClick={() => set({ pagamento: p })}>{PAY_LABEL[p]}</button>)}
               </div>
             </label>
             <label>Valor total (€)<input inputMode="decimal" value={form.valor} onChange={e => set({ valor: e.target.value })} placeholder="0,00" /></label>
@@ -117,11 +117,13 @@ export default function FaturaEditor() {
             {form.estado === 'Rejeitada' && <label className="span2">Motivo da rejeição<input value={form.motivo_rejeicao || ''} onChange={e => set({ motivo_rejeicao: e.target.value })} /></label>}
             <label className="span2">Observações<textarea value={form.observacoes || ''} onChange={e => set({ observacoes: e.target.value })} /></label>
           </div>
-          <div className={`notice ${form.pagamento === 'CGD' ? '' : form.pagamento === 'Por pagar' ? 'warn' : 'ok'}`}>
+          <div className={`notice ${form.pagamento === 'CGD' || form.pagamento === 'Airbnb' ? '' : form.pagamento === 'Por pagar' ? 'warn' : 'ok'}`}>
             {form.payment_id
               ? <>Liquidada em {formatDate(form.liquidada_em)} num pagamento agrupado. Para mudar o meio de pagamento, anula esse pagamento em <Link to="/por-liquidar">Faturas › Por pagar</Link>. <PaymentProofLinks paymentId={form.payment_id} /></>
               : form.pagamento === 'Por pagar'
               ? <>Por pagar: ainda não entra nos totais. Liquida-a em <Link to="/por-liquidar">Faturas › Por pagar</Link> (sozinha ou junto com outras do mesmo fornecedor).</>
+              : form.pagamento === 'Airbnb'
+              ? 'Airbnb: paga ou descontada pela Airbnb. Fica registada, mas não soma ao numerário nem à CGD (a Airbnb já transfere o valor sem comissões).'
               : form.pagamento === 'CGD'
               ? 'Paga por CGD: o valor já está no extrato bancário, por isso esta fatura não soma outra vez. Liga-a ao movimento correspondente.'
               : invoiceCountsAsExpense({ ...form, valor: form.valor === '' ? null : valor })

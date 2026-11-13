@@ -121,7 +121,7 @@ export function draftToInvoice(draft, { userId }) {
   const iva = String(draft.iva || '').trim() ? parseMoney(draft.iva) : null
   if (String(draft.iva || '').trim() && iva === null) return { error: 'O IVA não é válido. Usa, por exemplo, 2,30' }
   if (!draft.data) return { error: 'Falta a data da fatura.' }
-  if (!['Por pagar', 'Numerário', 'CGD'].includes(draft.pagamento)) return { error: 'Escolhe como foi paga.' }
+  if (!['Por pagar', 'Numerário', 'CGD', 'Airbnb'].includes(draft.pagamento)) return { error: 'Escolhe como foi paga.' }
   const obs = [
     draft.nif && `NIF do fornecedor: ${draft.nif}`,
     draft.atcud && `ATCUD: ${draft.atcud}`,

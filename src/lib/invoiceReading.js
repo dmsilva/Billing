@@ -194,8 +194,10 @@ export function applyReading(form, reading, today, { properties = [], touched = 
     filled.push('nif')
   }
   fill('descricao', r.descricao)
-  if (r.pagamento && !touched.pagamento) {
-    const pagamento = r.pagamento === 'numerario' ? 'Numerário' : 'CGD'
+  // Documentos da Airbnb: o pagamento é sempre "Airbnb" (pedido do Daniel, 13/11/2026).
+  const airbnb = /airbnb/i.test(String(next.fornecedor || ''))
+  if ((r.pagamento || airbnb) && !touched.pagamento) {
+    const pagamento = airbnb ? 'Airbnb' : r.pagamento === 'numerario' ? 'Numerário' : 'CGD'
     if (pagamento !== form.pagamento) { next.pagamento = pagamento; filled.push('pagamento') }
   }
   const imovel = matchProperty(r.cliente, properties)

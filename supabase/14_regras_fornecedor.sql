@@ -24,7 +24,7 @@ create table if not exists public.regras_fornecedor (
   fornecedor text not null,                  -- como a administração o escreveu (ex.: Grão de Trigo)
   chave text generated always as (public.chave_fornecedor(fornecedor)) stored,
   categoria_id bigint references public.categories(id) on delete set null,
-  pagamento text check (pagamento in ('Por pagar', 'CGD', 'Numerário')),   -- null = o que quem regista escolher
+  pagamento text check (pagamento in ('Por pagar', 'CGD', 'Numerário', 'Airbnb')),   -- null = o que quem regista escolher
   nota text,
   created_by uuid default auth.uid(),
   created_at timestamptz not null default now(),

@@ -211,7 +211,7 @@ function DropCard({ it, dups, properties, onChange, onSave, onDiscard }) {
             </select></label>
             <label className={d.pagaNoAto && !d.pagamento ? 'ask' : ''}><span className="lbl">{d.pagaNoAto ? 'Já paga · como?' : 'Pagamento'} {tag('pagamento')}</span><select value={d.pagamento} disabled={it.status !== 'pronto'} onChange={e => onChange({ pagamento: e.target.value })}>
               {!d.pagamento && <option value="">Escolhe como foi paga…</option>}
-              <option value="Numerário">💶 Numerário</option><option value="CGD">🏦 Cartão / transferência (CGD)</option><option value="Por pagar">🕓 Ainda por pagar</option>
+              <option value="Numerário">💶 Numerário</option><option value="CGD">🏦 Cartão / transferência (CGD)</option><option value="Airbnb">🏠 Airbnb</option><option value="Por pagar">🕓 Ainda por pagar</option>
             </select></label>
           </div>
           <label className="drop-desc"><span className="lbl">O que foi comprado {tag('descricao')}</span><input value={d.descricao} disabled={it.status !== 'pronto'} onChange={e => onChange({ descricao: e.target.value })} /></label>
@@ -229,7 +229,7 @@ function DropCard({ it, dups, properties, onChange, onSave, onDiscard }) {
         {it.error && <div className="err">{it.error}</div>}
         <div className="drop-actions">
           {it.status === 'gravada'
-            ? <span className="ok">✓ Gravada {d.pagamento === 'Por pagar' ? 'como por pagar' : d.pagamento === 'CGD' ? 'como paga por CGD' : 'como paga em numerário'} · <Link to={`/faturas/${it.invoiceId}`}>abrir</Link></span>
+            ? <span className="ok">✓ Gravada {d.pagamento === 'Por pagar' ? 'como por pagar' : d.pagamento === 'CGD' ? 'como paga por CGD' : d.pagamento === 'Airbnb' ? 'como paga pela Airbnb' : 'como paga em numerário'} · <Link to={`/faturas/${it.invoiceId}`}>abrir</Link></span>
             : <>
               <button type="button" className="primary" disabled={it.status !== 'pronto'} onClick={onSave}>{it.status === 'a gravar' ? 'A gravar…' : dups.length ? 'Gravar mesmo assim' : 'Gravar'}</button>
               <button type="button" className="secondary" disabled={it.status === 'a gravar'} onClick={onDiscard}>{dups.length ? 'Descartar (é repetida)' : 'Descartar'}</button>
