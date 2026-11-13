@@ -39,14 +39,18 @@ export default function Faturas() {
   const [selected, setSelected] = useState(() => new Set())
   const [action, setAction] = useState('validar')
   const [busy, setBusy] = useState(false)
-  const [order, setOrder] = useState('recentes')
+  // Por omissão, as últimas que chegaram ficam em cima (a data da fatura pode ser de meses atrás,
+  // ex.: as faturas da Airbnb que a receção envia de uma vez).
+  const [order, setOrder] = useState('chegada')
   const [origem, setOrigem] = useState('')
   const [paying, setPaying] = useState(null)
 
   const base = useMemo(() => invoiceRows.filter(r => (!month || monthOf(r.data) === month) && (!origem || (origem === 'rececao') === (r.source.origem === 'rececao')) && matchesInvoice(r, q)), [invoiceRows, month, origem, q])
   const counts = useMemo(() => Object.fromEntries(Object.entries(TABS).map(([k, t]) => [k, base.filter(t.test).length])), [base])
   const rows = useMemo(
-    () => base.filter(TABS[tab].test).sort((a, b) => (order === 'antigas' ? -1 : 1) * (String(b.data).localeCompare(String(a.data)) || String(b.source.created_at).localeCompare(String(a.source.created_at)))),
+    () => base.filter(TABS[tab].test).sort(order === 'chegada'
+      ? (a, b) => String(b.source.created_at).localeCompare(String(a.source.created_at)) || String(b.data).localeCompare(String(a.data))
+      : (a, b) => (order === 'antigas' ? -1 : 1) * (String(b.data).localeCompare(String(a.data)) || String(b.source.created_at).localeCompare(String(a.source.created_at)))),
     [base, tab, order],
   )
   const chosen = rows.filter(r => selected.has(r.id))
@@ -134,7 +138,7 @@ export default function Faturas() {
           <input className="search" type="search" value={q} onChange={e => setQ(e.target.value)} placeholder="Pesquisar fornecedor, documento, descrição ou valor…" aria-label="Pesquisar faturas" />
           <Select value={month} onChange={setMonth} options={months} placeholder="Todos os meses" aria-label="Mês" />
           <Select value={origem} onChange={setOrigem} options={[{ value: 'rececao', label: 'Enviadas pela receção' }, { value: 'admin', label: 'Registadas pela administração' }]} placeholder="Todas as origens" aria-label="Origem" />
-          <Select value={order} onChange={v => setOrder(v || 'recentes')} options={[{ value: 'recentes', label: 'Data: mais recentes primeiro' }, { value: 'antigas', label: 'Data: mais antigas primeiro' }]} aria-label="Ordenar" />
+          <Select value={order} onChange={v => setOrder(v || 'chegada')} options={[{ value: 'chegada', label: 'Últimas que chegaram primeiro' }, { value: 'recentes', label: 'Data: mais recentes primeiro' }, { value: 'antigas', label: 'Data: mais antigas primeiro' }]} aria-label="Ordenar" />
           <button type="button" className="secondary" onClick={pdf} title="Relatório com as faturas visíveis (ou as selecionadas) e o total de cada mês">PDF das despesas</button>
           <button type="button" className="secondary" onClick={() => exportInvoices(rows, `faturas-${tab}.csv`)}>Exportar CSV</button>
         </div>
