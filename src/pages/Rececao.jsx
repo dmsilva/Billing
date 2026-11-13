@@ -11,7 +11,7 @@ import { formatDate, formatDateTime, todayIso } from '../lib/dates'
 
 const PAY_LABEL = { 'Numerário': '💶 Numerário', CGD: '🏦 CGD', Airbnb: '🏠 Airbnb', 'Por pagar': '🕓 Por pagar' }
 const PAYMENTS = ['Numerário', 'CGD', 'Airbnb', 'Por pagar']
-const FILLED_LABEL = { fornecedor: 'fornecedor', data: 'data', documento: 'nº do documento', valor: 'valor', iva: 'IVA', nif: 'NIF', descricao: 'o que foi comprado', pagamento: 'meio de pagamento', imovel_id: 'imóvel' }
+const FILLED_LABEL = { fornecedor: 'fornecedor', data: 'data', documento: 'nº do documento', valor: 'valor', iva: 'IVA', nif: 'NIF', descricao: 'o que foi comprado', pagamento: 'meio de pagamento', imovel_id: 'imóvel', nota_credito: 'nota de crédito' }
 
 // Página independente para a receção: fotografar/enviar faturas. Não mostra dados financeiros.
 export default function Rececao() {
@@ -19,7 +19,7 @@ export default function Rececao() {
   const [properties, setProperties] = useState([])
   const [mine, setMine] = useState([])
   const [tab, setTab] = useState(() => (window.location.hash === '#transferencias' ? 'transferencias' : 'fatura'))
-  const blank = () => ({ fornecedor: '', data: todayIso(), imovel_id: '', pagamento: 'Numerário', enviado_por: profile?.nome || '', documento: '', valor: '', iva: '', descricao: '', observacoes: '' })
+  const blank = () => ({ fornecedor: '', data: todayIso(), imovel_id: '', pagamento: 'Numerário', enviado_por: profile?.nome || '', documento: '', valor: '', iva: '', descricao: '', observacoes: '', nota_credito: false })
   const [form, setForm] = useState(blank)
   const formRef = useRef()
   formRef.current = form
@@ -92,14 +92,17 @@ export default function Rececao() {
     if (form.valor.trim() && valor === null) return setStatus({ tone: 'bad', text: 'O valor não é válido. Usa, por exemplo, 12,30' })
     const iva = form.iva.trim() ? parseMoney(form.iva) : null
     if (form.iva.trim() && iva === null) return setStatus({ tone: 'bad', text: 'O IVA não é válido. Usa, por exemplo, 2,30' })
+    // Nota de crédito = anulação: fica com valor negativo para abater, nunca como entrada.
+    const sinal = v => (v === null ? null : form.nota_credito ? -Math.abs(v) : v)
     setBusy(true)
     try {
       const { data: inv, error } = await supabase.from('invoices').insert({
         fornecedor: form.fornecedor.trim() || null, data: form.data || null, imovel_id: form.imovel_id ? Number(form.imovel_id) : null,
         pagamento: form.pagamento, enviado_por: form.enviado_por.trim() || null, documento: form.documento.trim() || null, descricao: form.descricao.trim() || null,
-        valor, iva, observacoes: form.observacoes.trim() || null, origem: 'rececao', estado: 'Por validar', submitted_by: user.id,
+        valor: sinal(valor), iva: sinal(iva), observacoes: form.observacoes.trim() || null, origem: 'rececao', estado: 'Por validar', submitted_by: user.id,
       }).select('id').single()
-      if (error) throw (['Por pagar', 'Airbnb'].includes(form.pagamento) && /pagamento_check/.test(error.message) ? new Error(`a opção "${form.pagamento}" ainda não está ativa. Avisa a administradora.`) : error)
+      if (error) throw (['Por pagar', 'Airbnb'].includes(form.pagamento) && /pagamento_check/.test(error.message) ? new Error(`a opção "${form.pagamento}" ainda não está ativa. Avisa a administradora.`)
+        : form.nota_credito && /valor_check|iva_check/.test(error.message) ? new Error('as notas de crédito ainda não estão ativas. Avisa a administradora.') : error)
       let sent = 0
       const failed = []
       for (const file of files) {
@@ -176,6 +179,7 @@ export default function Rececao() {
               <label key={p}><input type="radio" name="pay" value={p} checked={form.pagamento === p} onChange={() => { touched.current.pagamento = true; set({ pagamento: p }) }} /><span>{PAY_LABEL[p]}</span></label>
             ))}
           </div>
+          <label className="nc-check"><input type="checkbox" checked={!!form.nota_credito} onChange={e => { touched.current.nota_credito = true; set({ nota_credito: e.target.checked }) }} /> <span>É uma <strong>nota de crédito</strong> (anulação / devolução): o valor abate, não é uma despesa nova</span></label>
           <div className="grid">
             <label>Quem está a enviar?<input value={form.enviado_por} onChange={e => set({ enviado_por: e.target.value })} placeholder="Nome do funcionário" /></label>
             <label>Valor total <span className="opt">(opcional)</span><input inputMode="decimal" value={form.valor} onChange={e => set({ valor: e.target.value })} placeholder="0,00" /></label>

@@ -110,6 +110,10 @@ export default function FaturaEditor() {
                 {PAYMENTS.map(p => <button type="button" key={p} disabled={!!form.payment_id} className={form.pagamento === p ? 'on' : ''} onClick={() => set({ pagamento: p })}>{PAY_LABEL[p]}</button>)}
               </div>
             </label>
+            <label className="span2 nc-check"><input type="checkbox" checked={String(form.valor).trim().startsWith('-')} onChange={e => {
+              const flip = v => { const n = parseMoney(v); return n === null ? v : toInput(e.target.checked ? -Math.abs(n) : Math.abs(n)) }
+              set({ valor: flip(form.valor), iva: flip(form.iva) })
+            }} /> <span>Nota de crédito (anulação): valor negativo, abate em vez de somar</span></label>
             <label>Valor total (€)<input inputMode="decimal" value={form.valor} onChange={e => set({ valor: e.target.value })} placeholder="0,00" /></label>
             <label>IVA (€)<input inputMode="decimal" value={form.iva} onChange={e => set({ iva: e.target.value })} placeholder="opcional" /></label>
             <label>Estado do IVA<Select value={form.iva_estado} onChange={v => set({ iva_estado: v })} options={['A apurar', 'Apurado', 'Isento']} /></label>

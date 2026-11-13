@@ -54,7 +54,8 @@ export function buildDraft({ qr, leitura, invoices = [], properties = [], rules 
   if (qr && r?.valor_total !== null && r?.valor_total !== undefined && cents(r.valor_total) !== cents(qr.valor_total)) {
     avisos.push(`A leitura da imagem deu ${formatAmount(r.valor_total)} €, mas o código QR diz ${formatAmount(qr.valor_total)} €. Ficou o valor do QR.`)
   }
-  if (qr?.tipo === 'NC' || (!qr && r?.tipo_documento === 'nota_credito')) avisos.push('É uma nota de crédito (devolução), não uma fatura a pagar.')
+  const notaCredito = qr?.tipo === 'NC' || (!qr && r?.tipo_documento === 'nota_credito')
+  if (notaCredito) avisos.push('É uma nota de crédito (anulação): fica com valor negativo e abate às despesas.')
   if (qr?.anulado) avisos.push('O código QR diz que este documento foi anulado.')
   if (!qr && !r) avisos.push('Não foi possível ler este ficheiro. Preenche os campos à mão.')
   if (data && today && data > today) avisos.push('A data da fatura é no futuro. Confirma a data.')
@@ -76,8 +77,8 @@ export function buildDraft({ qr, leitura, invoices = [], properties = [], rules 
     fornecedor: fornecedor || '',
     data: data || '',
     documento: documento || '',
-    valor: formatAmount(valor),
-    iva: formatAmount(iva),
+    valor: formatAmount(valor != null && notaCredito ? -Math.abs(valor) : valor),
+    iva: formatAmount(iva != null && notaCredito ? -Math.abs(iva) : iva),
     descricao: r?.descricao || '',
     imovel_id: imovel_id === null ? '' : String(imovel_id),
     // Fornecedor com categoria fixa (Editar categorias) ganha à última usada.

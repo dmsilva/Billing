@@ -24,3 +24,11 @@ begin
   if (select pagamento from public.invoices where fornecedor = 'Airbnb Ireland UC') <> 'Airbnb' then raise exception 'FALHOU: conversão das antigas'; end if;
 end $$;
 delete from public.invoices where fornecedor in ('Airbnb Ireland UC', 'Reserva HM123');
+
+-- Nota de crédito: a receção grava com valor negativo (supabase/18_notas_credito.sql).
+set role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-00000000000b', false);
+insert into public.invoices (data, fornecedor, pagamento, valor, iva, origem, estado)
+values ('2026-11-13', 'Loja NC', 'Numerário', -10.50, -1.96, 'rececao', 'Por validar');
+reset role;
+delete from public.invoices where fornecedor = 'Loja NC';

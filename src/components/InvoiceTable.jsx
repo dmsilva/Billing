@@ -2,7 +2,7 @@ import { useNavigate } from 'react-router-dom'
 import { Badge, Empty, PaymentBadge, StateBadge } from './ui'
 import { euro } from '../lib/money'
 import { formatDate } from '../lib/dates'
-import { invoiceCountsAsExpense } from '../lib/finance'
+import { invoiceCountsAsExpense, isCreditNote } from '../lib/finance'
 import { decimalPt, downloadText, toCsv } from '../lib/csv'
 
 export function exportInvoices(rows, name) {
@@ -30,7 +30,7 @@ export default function InvoiceTable({ rows, showOrigin, selected, onSelect }) {
                 {onSelect && <td onClick={e => e.stopPropagation()}><input type="checkbox" aria-label={`Selecionar ${r.fornecedor || 'fatura'}`} checked={selected.has(r.id)} onChange={e => onSelect([r.id], e.target.checked)} /></td>}
                 <td>{formatDate(r.data)}</td>
                 <td><strong>{r.fornecedor || '—'}</strong>{files > 0 && <div className="muted small">📎 {files} ficheiro{files > 1 ? 's' : ''}</div>}</td>
-                <td>{r.documento || '—'}</td>
+                <td>{r.documento || '—'}{isCreditNote(inv) && <div><Badge tone="bad">Nota de crédito</Badge></div>}</td>
                 <td className="wrap">{r.descricao}</td>
                 <td><Badge>{r.categoria}</Badge></td>
                 <td>{r.imovel}</td>

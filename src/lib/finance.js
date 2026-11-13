@@ -8,6 +8,7 @@
 //  - Faturas pagas por CGD são documentos de suporte de um movimento do extrato: nunca são
 //    somadas outra vez (evita dupla contagem).
 //  - Faturas rejeitadas ou ainda sem valor não entram nos totais.
+//  - Notas de crédito ficam com valor negativo: são anulações, abatem ao total (nunca são entradas).
 //  - Faturas "Por pagar" ficam fora dos totais até serem liquidadas (passam então a CGD ou Numerário).
 //  - Faturas "Airbnb" (pagas/descontadas pela Airbnb) não saem da caixa nem da CGD: ficam registadas
 //    e visíveis, mas não somam ao numerário (a Airbnb já paga ao Chalet o valor sem comissões).
@@ -25,6 +26,8 @@ export const PAYMENT_UNPAID = 'Por pagar'
 export const PAYMENT_AIRBNB = 'Airbnb'
 // Ordem em que as opções aparecem nos ecrãs.
 export const PAYMENTS = ['Numerário', 'CGD', 'Airbnb', 'Por pagar']
+// Nota de crédito = anulação: grava-se com valor (e IVA) negativo e abate às despesas.
+export const isCreditNote = inv => inv?.valor != null && Number(inv.valor) < 0
 export const UNCLASSIFIED = ['Por classificar', 'Outros / por classificar']
 
 export const SALARY_RE = /\bORDEN(?:ADO|ADOS|AR|OS|A)?\b|\bORDE\b|\bSAL[ÁA]RIO(?:S)?\b/i
