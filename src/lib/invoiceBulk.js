@@ -1,6 +1,7 @@
 // Alterações a várias faturas de uma vez (página Faturas). Devolve o que gravar em cada fatura
 // ou o motivo para a deixar como está; segue as mesmas regras do editor da fatura.
 import { todayIso } from './dates.js'
+import { canValidateWithoutValue } from './finance.js'
 
 export const BULK_ACTIONS = {
   'por-pagar': 'Passar a Por liquidar',
@@ -22,7 +23,7 @@ export function bulkPatch(inv, action, { userId, today = todayIso(), now = new D
   }
   if (action === 'validar') {
     if (inv.estado === 'Validada') return { skip: 'já validada' }
-    if (inv.valor == null) return { skip: 'sem valor' }
+    if (inv.valor == null && !canValidateWithoutValue(inv)) return { skip: 'sem valor' }
     return { patch: { estado: 'Validada', validated_by: userId, validated_at: now } }
   }
   return { skip: 'ação desconhecida' }
