@@ -103,3 +103,12 @@ describe('gravar', () => {
     expect(draftToInvoice({ ...d, data: '' }, {}).error).toMatch(/data/)
   })
 })
+
+describe('notas de crédito', () => {
+  it('ficam com valor e IVA negativos (anulação)', () => {
+    const d = buildDraft({ leitura: { fornecedor: 'Airbnb Ireland UC', tipo_documento: 'nota_credito', valor_total: 12.5, iva: 2.34, data: '2026-09-10' }, today: '2026-11-13' })
+    expect(d.valor).toBe('-12,50')
+    expect(d.iva).toBe('-2,34')
+    expect(d.avisos.join(' ')).toMatch(/nota de crédito/)
+  })
+})

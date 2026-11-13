@@ -45,6 +45,10 @@ describe('applyReading', () => {
     expect(applyReading({ ...blank, pagamento: 'Numerário' }, lida, '2026-11-13').form.pagamento).toBe('Airbnb')
     expect(applyReading({ ...blank, pagamento: 'Numerário' }, lida, '2026-11-13', { touched: { pagamento: true } }).form.pagamento).toBe('Numerário')
   })
+  it('marca as notas de crédito', () => {
+    expect(applyReading(blank, { fornecedor: 'Airbnb', tipo_documento: 'nota_credito', valor_total: 5 }, '2026-11-13').form.nota_credito).toBe(true)
+    expect(applyReading(blank, { fornecedor: 'Makro', tipo_documento: 'fatura' }, '2026-11-13').form.nota_credito).toBeFalsy()
+  })
   it('sem dados lidos não muda nada', () => {
     const { form, filled } = applyReading(blank, {}, '2026-10-20')
     expect(form).toEqual(blank)

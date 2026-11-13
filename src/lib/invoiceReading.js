@@ -194,6 +194,7 @@ export function applyReading(form, reading, today, { properties = [], touched = 
     filled.push('nif')
   }
   fill('descricao', r.descricao)
+  if (r.tipo_documento === 'nota_credito' && !touched.nota_credito && !form.nota_credito) { next.nota_credito = true; filled.push('nota_credito') }
   // Documentos da Airbnb: o pagamento é sempre "Airbnb" (pedido do Daniel, 13/11/2026).
   const airbnb = /airbnb/i.test(String(next.fornecedor || ''))
   if ((r.pagamento || airbnb) && !touched.pagamento) {
