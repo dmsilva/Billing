@@ -40,6 +40,11 @@ describe('applyReading', () => {
     const { form } = applyReading({ ...blank, fornecedor: 'Makro Lisboa', valor: '40', data: '2026-10-01', observacoes: 'urgente' }, leitura, '2026-10-20')
     expect(form).toMatchObject({ fornecedor: 'Makro Lisboa', valor: '40', data: '2026-10-01', observacoes: 'urgente\nNIF do fornecedor: 502123456' })
   })
+  it('documentos da Airbnb ficam com pagamento Airbnb, a não ser que a pessoa já tenha escolhido', () => {
+    const lida = { fornecedor: 'Airbnb Ireland UC', valor_total: 30, pagamento: 'cartao' }
+    expect(applyReading({ ...blank, pagamento: 'Numerário' }, lida, '2026-11-13').form.pagamento).toBe('Airbnb')
+    expect(applyReading({ ...blank, pagamento: 'Numerário' }, lida, '2026-11-13', { touched: { pagamento: true } }).form.pagamento).toBe('Numerário')
+  })
   it('sem dados lidos não muda nada', () => {
     const { form, filled } = applyReading(blank, {}, '2026-10-20')
     expect(form).toEqual(blank)

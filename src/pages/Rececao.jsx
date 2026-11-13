@@ -9,7 +9,8 @@ import { applyReading, fileType } from '../lib/invoiceReading'
 import { parseMoney } from '../lib/money'
 import { formatDate, formatDateTime, todayIso } from '../lib/dates'
 
-const PAY_LABEL = { 'Numerário': '💶 Numerário', CGD: '🏦 CGD', 'Por pagar': '🕓 Por pagar' }
+const PAY_LABEL = { 'Numerário': '💶 Numerário', CGD: '🏦 CGD', Airbnb: '🏠 Airbnb', 'Por pagar': '🕓 Por pagar' }
+const PAYMENTS = ['Numerário', 'CGD', 'Airbnb', 'Por pagar']
 const FILLED_LABEL = { fornecedor: 'fornecedor', data: 'data', documento: 'nº do documento', valor: 'valor', iva: 'IVA', nif: 'NIF', descricao: 'o que foi comprado', pagamento: 'meio de pagamento', imovel_id: 'imóvel' }
 
 // Página independente para a receção: fotografar/enviar faturas. Não mostra dados financeiros.
@@ -98,7 +99,7 @@ export default function Rececao() {
         pagamento: form.pagamento, enviado_por: form.enviado_por.trim() || null, documento: form.documento.trim() || null, descricao: form.descricao.trim() || null,
         valor, iva, observacoes: form.observacoes.trim() || null, origem: 'rececao', estado: 'Por validar', submitted_by: user.id,
       }).select('id').single()
-      if (error) throw (form.pagamento === 'Por pagar' && /pagamento_check/.test(error.message) ? new Error('a opção "Por pagar" ainda não está ativa. Avisa a administradora.') : error)
+      if (error) throw (['Por pagar', 'Airbnb'].includes(form.pagamento) && /pagamento_check/.test(error.message) ? new Error(`a opção "${form.pagamento}" ainda não está ativa. Avisa a administradora.`) : error)
       let sent = 0
       const failed = []
       for (const file of files) {
@@ -165,13 +166,13 @@ export default function Rececao() {
             </div>
           )}
           <div className="grid">
-            <label>Fornecedor<input value={form.fornecedor} onChange={e => set({ fornecedor: e.target.value })} placeholder="Ex.: Pingo Doce" /></label>
+            <label>Fornecedor<input value={form.fornecedor} onChange={e => set({ fornecedor: e.target.value, ...(/airbnb/i.test(e.target.value) && !touched.current.pagamento ? { pagamento: 'Airbnb' } : {}) })} placeholder="Ex.: Pingo Doce" /></label>
             <label>Data da fatura<input type="date" value={form.data} onChange={e => set({ data: e.target.value })} /></label>
           </div>
           <label>Imóvel<select value={form.imovel_id} onChange={e => { touched.current.imovel_id = true; set({ imovel_id: e.target.value }) }}>{properties.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}</select></label>
           <label>Meio de pagamento</label>
           <div className="pay">
-            {['Numerário', 'CGD', 'Por pagar'].map(p => (
+            {PAYMENTS.map(p => (
               <label key={p}><input type="radio" name="pay" value={p} checked={form.pagamento === p} onChange={() => { touched.current.pagamento = true; set({ pagamento: p }) }} /><span>{PAY_LABEL[p]}</span></label>
             ))}
           </div>

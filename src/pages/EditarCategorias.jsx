@@ -12,7 +12,7 @@ import { euro } from '../lib/money'
 import { downloadText } from '../lib/csv'
 import { isUnclassified, ruleFor, ruleKey } from '../lib/autoInvoices'
 
-const PAGAMENTOS = [{ value: 'Por pagar', label: 'Por pagar (liquido depois)' }, { value: 'CGD', label: 'CGD (cartão / débito direto)' }, { value: 'Numerário', label: 'Numerário' }]
+const PAGAMENTOS = [{ value: 'Por pagar', label: 'Por pagar (liquido depois)' }, { value: 'CGD', label: 'CGD (cartão / débito direto)' }, { value: 'Numerário', label: 'Numerário' }, { value: 'Airbnb', label: 'Airbnb (pago pela Airbnb)' }]
 
 export default function EditarCategorias() {
   const { bank_transactions, invoices, regras_fornecedor, regrasFornecedorReady, categories, categoriesById, properties, propertiesById, upsertLocal, removeLocal, reload } = useData()
