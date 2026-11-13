@@ -305,6 +305,14 @@ export function createLocalClient({ dataDir = `idb://${LOCAL_DB_NAME}`, storage 
           return { data: { signedUrl: url }, error: null }
         } catch (e) { return fail(e) }
       },
+      async download(path) {
+        try {
+          const pg = await db()
+          const { rows } = await pg.query(`select mime, data from local.files where path = $1`, [path])
+          if (!rows.length) return fail({ message: 'Ficheiro não encontrado' })
+          return { data: new Blob([rows[0].data], { type: rows[0].mime }), error: null }
+        } catch (e) { return fail(e) }
+      },
       // Como no Supabase: devolve os ficheiros da pasta e as subpastas (estas com id null).
       async list(prefix = '') {
         try {

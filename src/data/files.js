@@ -76,3 +76,10 @@ export async function deletePaymentProofs(paymentId) {
   const { error } = await supabase.storage.from(BUCKET).remove(files.map(f => f.path))
   if (error) throw error
 }
+
+// Descarrega o ficheiro original do bucket privado (para juntar vários num ZIP).
+export async function downloadStoredFile(path) {
+  const { data, error } = await supabase.storage.from(BUCKET).download(path)
+  if (error) throw error
+  return data
+}

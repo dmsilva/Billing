@@ -13,7 +13,8 @@ import { printExpenseReport } from '../lib/expenseReport'
 import { PayModal } from './PorLiquidar'
 import { BULK_ACTIONS, bulkPatch, matchesInvoice } from '../lib/invoiceBulk'
 import { openDroppedInvoices } from '../components/ArrastarFaturas'
-import { ACCEPTED } from '../data/files'
+import { ACCEPTED, downloadStoredFile } from '../data/files'
+import { buildInvoicesZip } from '../lib/zipFaturas'
 
 const INVOICE_SELECT = '*, invoice_files(id, nome_ficheiro, mime, storage_path, tamanho, created_at)'
 
@@ -44,6 +45,7 @@ export default function Faturas() {
   const [order, setOrder] = useState('chegada')
   const [origem, setOrigem] = useState('')
   const [paying, setPaying] = useState(null)
+  const [zipping, setZipping] = useState(null)
 
   const base = useMemo(() => invoiceRows.filter(r => (!month || monthOf(r.data) === month) && (!origem || (origem === 'rececao') === (r.source.origem === 'rececao')) && matchesInvoice(r, q)), [invoiceRows, month, origem, q])
   const counts = useMemo(() => Object.fromEntries(Object.entries(TABS).map(([k, t]) => [k, base.filter(t.test).length])), [base])
@@ -115,6 +117,32 @@ export default function Faturas() {
     if (!printExpenseReport([...list].sort((a, b) => String(a.data).localeCompare(String(b.data))), { title: 'Despesas', subtitle: sub })) toast('O navegador bloqueou a janela do PDF. Autoriza janelas pop-up para este site.', 'bad')
   }
 
+  // Ficheiros originais (PDF/fotos) das selecionadas, ou de todas as visíveis, num só ZIP para a contabilidade.
+  async function zip() {
+    const list = chosen.length ? chosen : rows
+    if (!list.some(r => r.source.invoice_files?.length)) return toast('Nenhuma destas faturas tem ficheiro (PDF ou foto) guardado.', 'bad')
+    setZipping({ done: 0, total: 0 })
+    try {
+      const { zip: bytes, count, failed, withoutFiles } = await buildInvoicesZip(list, downloadStoredFile, { onProgress: (done, total) => setZipping({ done, total }) })
+      const name = `faturas-${month || new Date().toISOString().slice(0, 10)}${chosen.length ? '-selecionadas' : ''}.zip`
+      const a = document.createElement('a')
+      a.href = URL.createObjectURL(new Blob([bytes], { type: 'application/zip' }))
+      a.download = name
+      a.click()
+      setTimeout(() => URL.revokeObjectURL(a.href), 5000)
+      const notes = [
+        withoutFiles.length ? `${withoutFiles.length} sem ficheiro (${withoutFiles.slice(0, 5).map(r => r.fornecedor || 'Sem fornecedor').join(', ')}${withoutFiles.length > 5 ? '…' : ''})` : '',
+        failed.length ? `${failed.length} não foi possível descarregar` : '',
+      ].filter(Boolean).join('; ')
+      toast(`ZIP com ${count} ficheiro${count === 1 ? '' : 's'} descarregado.${notes ? ` Atenção: ${notes}.` : ''}`, notes ? 'bad' : 'ok')
+    } catch (e) {
+      toast(`Não foi possível criar o ZIP: ${e.message}`, 'bad')
+    } finally {
+      setZipping(null)
+    }
+  }
+  const zipLabel = zipping ? `A juntar ${zipping.done}/${zipping.total}…` : null
+
   if (params.get('tab') === 'por-liquidar') return <Navigate to="/por-liquidar" replace />
   return (
     <>
@@ -140,6 +168,7 @@ export default function Faturas() {
           <Select value={origem} onChange={setOrigem} options={[{ value: 'rececao', label: 'Enviadas pela receção' }, { value: 'admin', label: 'Registadas pela administração' }]} placeholder="Todas as origens" aria-label="Origem" />
           <Select value={order} onChange={v => setOrder(v || 'chegada')} options={[{ value: 'chegada', label: 'Últimas que chegaram primeiro' }, { value: 'recentes', label: 'Data: mais recentes primeiro' }, { value: 'antigas', label: 'Data: mais antigas primeiro' }]} aria-label="Ordenar" />
           <button type="button" className="secondary" onClick={pdf} title="Relatório com as faturas visíveis (ou as selecionadas) e o total de cada mês">PDF das despesas</button>
+          <button type="button" className="secondary" disabled={!!zipping} onClick={zip} title="Descarrega num só ZIP os PDF e fotos das faturas visíveis (ou das selecionadas), com uma lista em CSV. Bom para enviar à contabilidade.">{zipLabel || 'Ficheiros (ZIP)'}</button>
           <button type="button" className="secondary" onClick={() => exportInvoices(rows, `faturas-${tab}.csv`)}>Exportar CSV</button>
         </div>
         <div className="notice">Os pagamentos Endesa com CPE <strong>PT0002000133379727RQ</strong> pertencem ao <strong>Chalet do Lago</strong>. Confirma o imóvel desses movimentos em CGD / Extrato.</div>
@@ -152,12 +181,19 @@ export default function Faturas() {
         <Kpi color="orange" icon="%" label="IVA" value={euro(sumBy(rows.filter(r => r.source.iva != null), r => r.source.iva))} note={`${rows.filter(r => r.source.iva == null).length} com IVA a apurar`} />
       </div>
       <Panel>
+        {chosen.length === 0 && rows.length > 0 && (
+          <div className="bulk-bar">
+            <span className="muted small">Para enviar à contabilidade: escolhe o mês em cima e seleciona as faturas (ou todas de uma vez).</span>
+            <button type="button" className="secondary" onClick={() => onSelect(rows.map(r => r.id), true)}>Selecionar todas ({rows.length})</button>
+          </div>
+        )}
         {chosen.length > 0 && (
           <div className="bulk-bar">
             <strong>{chosen.length} selecionada{chosen.length === 1 ? '' : 's'}</strong>
             <Select value={action} onChange={setAction} options={Object.entries(BULK_ACTIONS).map(([value, label]) => ({ value, label }))} aria-label="Ação" />
             <button type="button" className="primary" disabled={busy} onClick={apply}>{busy ? 'A gravar…' : 'Aplicar'}</button>
             <button type="button" className="primary" disabled={!paymentsReady} onClick={startPay}>Liquidar selecionadas</button>
+            <button type="button" className="primary" disabled={!!zipping} onClick={zip} title="PDF e fotos originais das selecionadas, num só ZIP">{zipLabel || '📎 Descarregar ficheiros (ZIP)'}</button>
             <button type="button" className="secondary" onClick={pdf}>PDF das selecionadas</button>
             <button type="button" className="secondary" onClick={() => setSelected(new Set())}>Limpar seleção</button>
           </div>
