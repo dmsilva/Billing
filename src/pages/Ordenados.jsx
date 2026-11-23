@@ -1,8 +1,10 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Empty, Panel, useToast } from '../components/ui'
 import { gerarExcel, gerarPdf, lerMesesDoFicheiro, lerOrdenados, nomeMes } from '../lib/ordenados'
 import { dataHora, deBase64, descarregar, paraBase64, XLSX_TYPE } from '../lib/ficheiros'
 import { supabase } from '../supabase'
+import { ePdf } from '../lib/horarioPdf'
+import { lerHorarioPdf } from '../data/horarioPdf'
 
 const HISTORICO = 'ordenados_envios'
 
@@ -17,13 +19,26 @@ export default function Ordenados() {
   const [busy, setBusy] = useState(false)
   const [dados, setDados] = useState(null)
   const [guardado, setGuardado] = useState(null)
+  // Horário em PDF: cada mês é lido uma vez pela leitura automática e fica guardado aqui.
+  const grelhas = useRef({})
 
   async function escolherHorario(file) {
-    setHorario(file); setDados(null)
+    setHorario(null); setDados(null); setMeses([]); setMes('')
+    grelhas.current = {}
+    const hoje = new Date()
+    if (ePdf(file)) {
+      setBusy(true)
+      const r = await lerHorarioPdf(file, hoje.getFullYear(), hoje.getMonth() + 1)
+      setBusy(false)
+      if (r.error) return toast(`Não consegui ler o horário: ${r.error}`, 'bad')
+      grelhas.current[`${r.ano}-${r.mes}`] = r.grelha
+      setHorario(file); setMeses(r.meses); setMes(`${r.ano}-${r.mes}`)
+      return
+    }
+    setHorario(file)
     try {
       const lista = await lerMesesDoFicheiro(file)
       setMeses(lista)
-      const hoje = new Date()
       const atual = lista.find(m => m.ano === hoje.getFullYear() && m.mes === hoje.getMonth() + 1) || lista[lista.length - 1]
       setMes(atual ? `${atual.ano}-${atual.mes}` : '')
       if (!lista.length) toast('Este Excel não tem folhas com o nome do mês (ex.: "Outubro 2026").', 'bad')
@@ -35,7 +50,15 @@ export default function Ordenados() {
     let ativo = true
     const [ano, m] = mes.split('-').map(Number)
     setBusy(true)
-    lerOrdenados(horario, ordenados, ano, m)
+    const fonte = !ePdf(horario) ? Promise.resolve(horario)
+      : grelhas.current[mes] ? Promise.resolve({ grelha: grelhas.current[mes] })
+        : lerHorarioPdf(horario, ano, m).then(r => {
+          if (r.error) throw new Error(`Não consegui ler o horário: ${r.error}`)
+          if (r.ano !== ano || r.mes !== m) throw new Error(`O PDF do horário não tem ${nomeMes(ano, m)}.`)
+          grelhas.current[mes] = r.grelha
+          return { grelha: r.grelha }
+        })
+    fonte.then(h => lerOrdenados(h, ordenados, ano, m))
       .then(d => { if (ativo) setDados(d) })
       .catch(e => { if (ativo) { setDados(null); toast(e.message, 'bad') } })
       .finally(() => { if (ativo) setBusy(false) })
@@ -71,16 +94,16 @@ export default function Ordenados() {
 
   return (
     <>
-      <Panel title="Ordenados para a contabilidade" hint="Envia o horário dos funcionários e o Excel dos ordenados. Contamos os feriados trabalhados, as noites (23h às 7h) e os dias de férias (azul). Escreve as notas que quiseres e descarrega em Excel ou PDF.">
+      <Panel title="Ordenados para a contabilidade" hint="Envia o horário dos funcionários (Excel ou PDF) e o Excel dos ordenados. Contamos os feriados trabalhados, as noites (23h às 7h) e os dias de férias (azul). Escreve as notas que quiseres e descarrega em Excel ou PDF.">
         <div className="actions">
-          <label className="file-button"><input type="file" accept=".xlsx" onChange={e => e.target.files[0] && escolherHorario(e.target.files[0])} />{horario ? `Horário: ${horario.name}` : '1. Escolher o horário (Funcionários)'}</label>
+          <label className="file-button"><input type="file" accept=".xlsx,.pdf,application/pdf" disabled={busy} onChange={e => { if (e.target.files[0]) escolherHorario(e.target.files[0]); e.target.value = '' }} />{horario ? `Horário: ${horario.name}` : '1. Escolher o horário (Funcionários)'}</label>
           <label className="file-button"><input type="file" accept=".xlsx" onChange={e => { if (e.target.files[0]) { setOrdenados(e.target.files[0]); setDados(null) } }} />{ordenados ? `Ordenados: ${ordenados.name}` : '2. Escolher o Excel dos ordenados'}</label>
           {meses.length > 0 && (
             <select value={mes} onChange={e => { setMes(e.target.value); setDados(null) }} aria-label="Mês">
               {meses.map(x => <option key={x.folha} value={`${x.ano}-${x.mes}`}>{nomeMes(x.ano, x.mes)}</option>)}
             </select>
           )}
-          {busy && !dados && <span className="muted">A ler…</span>}
+          {busy && !dados && <span className="muted">{horario && !ePdf(horario) ? 'A ler…' : 'A ler o horário… (um PDF pode demorar até um minuto)'}</span>}
         </div>
       </Panel>
       {dados && (
@@ -94,6 +117,7 @@ export default function Ordenados() {
               Estão no horário mas não na folha da contabilidade, por isso ficam de fora: {dados.semPar.map(f => f.nome).join(', ')}.
             </div>
           )}
+          {horario && ePdf(horario) && <div className="notice">Horário lido automaticamente do PDF: confere os números antes de enviar à contabilidade.</div>}
           {guardado && <div className="notice ok">Guardado no histórico.</div>}
           <div className="tablewrap"><table className="mini-table">
             <thead><tr><th>Código</th><th>Nome</th><th className="money">Feriados</th><th className="money">Noites</th><th className="money">Férias</th><th>Faltas justificadas</th><th>Notas</th></tr></thead>

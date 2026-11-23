@@ -147,7 +147,7 @@ O modo local nunca entra no build de produção.
    | `VITE_SUPABASE_URL` | Project URL |
    | `VITE_SUPABASE_ANON_KEY` | chave **anon / publishable** |
    | `SUPABASE_SERVICE_ROLE_KEY` | chave **service_role** (só para a função que cria contas) |
-| `ANTHROPIC_API_KEY` | opcional: chave da [Anthropic](https://console.anthropic.com) para ler automaticamente as faturas na Receção e responder na página Perguntar |
+| `ANTHROPIC_API_KEY` | opcional: chave da [Anthropic](https://console.anthropic.com) para ler automaticamente as faturas na Receção, responder na página Perguntar e ler o horário em PDF na página Ordenados |
 
    ⚠️ As variáveis que começam por `VITE_` ficam visíveis no navegador: nunca lá pôr chaves secretas. A `SUPABASE_SERVICE_ROLE_KEY` não tem esse prefixo e só é lida pela função do servidor `netlify/functions/criar-utilizador.mjs`, que confirma que quem pede é administradora antes de criar a conta. Se quiseres, marca-a como *secret* no Netlify.
 
