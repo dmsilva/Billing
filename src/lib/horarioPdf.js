@@ -19,6 +19,7 @@ export const HORARIO_SCHEMA = {
     ano: { type: 'integer', description: 'Ano do mês transcrito' },
     mes: { type: 'integer', description: 'Mês transcrito, 1 a 12' },
     dias: { type: 'array', items: { type: 'integer' }, description: 'Coluna DIA, de cima para baixo, incluindo os dias do mês anterior/seguinte que a folha mostre' },
+    feriado: { type: 'array', items: { type: 'boolean' }, description: 'Alinhado com "dias": true quando a palavra "feriado" está escrita ao lado desse dia' },
     funcionarios: {
       type: 'array',
       items: {
@@ -32,28 +33,34 @@ export const HORARIO_SCHEMA = {
       },
     },
   },
-  required: ['meses', 'ano', 'mes', 'dias', 'funcionarios'],
+  required: ['meses', 'ano', 'mes', 'dias', 'feriado', 'funcionarios'],
   additionalProperties: false,
 }
 
 export function horarioPrompt(ano, mes) {
   const pedido = ano && mes ? `${nomeMes(ano, mes)}` : 'o mês mais recente'
-  return `Este documento é o horário dos funcionários de um alojamento local. Cada mês é uma grelha:
-a coluna "DIA" tem o dia do mês (a folha costuma começar nos últimos dias do mês anterior e acabar no início do seguinte);
-cada funcionário tem o nome no cabeçalho e duas colunas por baixo: hora de entrada e hora de saída.
-Cores das células: azul = férias; vermelho = falta justificada; verde = folga. Ignora colunas com "?" no cabeçalho.
+  return `Este documento é o horário dos funcionários de um alojamento local (exportado de uma folha de cálculo).
+Cada mês é uma grelha: a coluna "DIA" tem o dia da semana e o dia do mês (ex.: "Seg 26"); a grelha costuma começar
+nos últimos dias do mês anterior e acabar nos primeiros dias do seguinte.
+Cada funcionário tem o nome no cabeçalho e duas colunas por baixo: "Entrada" e "Saída" (ex.: "7h00" e "15h30", ou "23" e "7").
+A grelha pode estar partida em blocos lado a lado, cada um com a sua coluna "DIA": junta os funcionários de todos os blocos
+e alinha-os pelo dia. Ao lado de alguns dias pode estar escrito "feriado".
+Cores das células: azul = férias; vermelho = falta justificada (ex.: "baixa medica"); verde = folga (às vezes com "*");
+cinzento = sem horário. As linhas a laranja/salmão são só fins de semana (não querem dizer feriado).
 
 1. Em "meses", lista todos os meses que o documento tem.
 2. Transcreve só ${pedido} (se não existir, o mais recente) e diz em "ano" e "mes" qual transcreveste.
-3. Em "dias", põe cada número da coluna DIA, de cima para baixo, sem saltar nenhum.
-4. Para cada funcionário, em "turnos", põe um código por linha de "dias" (o mesmo número de elementos):
-   - "HH:MM-HH:MM" com as horas de entrada e saída (ex.: "07:00-15:30", "23:00-07:00");
+3. Em "dias", põe o número de cada linha da coluna DIA, de cima para baixo, sem saltar nenhuma
+   (do primeiro ao último dia que a grelha mostre, incluindo os do mês anterior e do seguinte).
+4. Em "feriado", para cada linha de "dias", true se tiver "feriado" escrito ao lado do dia, senão false.
+5. Para cada funcionário, em "turnos", põe um código por linha de "dias" (o mesmo número de elementos):
+   - "HH:MM-HH:MM" com as horas de entrada e saída (ex.: "07:00-15:30", "23:00-07:00", "12:00-20:00");
    - "FERIAS" se a célula estiver a azul ou disser férias;
-   - "FALTA" se estiver a vermelho ou disser falta;
+   - "FALTA" se estiver a vermelho ou disser falta ou baixa;
    - "FERIADO" se disser feriado (feriado gozado, sem horas);
    - "FOLGA" se estiver a verde sem horas;
-   - "" se estiver vazia.
-Transcreve exatamente o que está no documento, sem inventar horas.`
+   - "" se estiver vazia, cinzenta ou se o bloco desse funcionário não tiver essa linha.
+Transcreve exatamente o que está no documento, sem inventar horas. Verifica coluna a coluna que cada hora fica no funcionário certo.`
 }
 
 const CODIGOS = { FERIAS: 'ferias', FALTA: 'falta', FERIADO: 'feriado' }
@@ -76,7 +83,7 @@ export function grelhaDoPdf(lida) {
   if (!ok(ano) || !ok(mes) || mes < 1 || mes > 12) throw new Error('Não consegui perceber de que mês é o horário.')
   if (!meses.some(m => m.ano === ano && m.mes === mes)) meses.push({ ano, mes })
   meses.sort((a, b) => a.ano - b.ano || a.mes - b.mes)
-  const dias = (Array.isArray(lida.dias) ? lida.dias : []).filter(ok)
+  const dias = Array.isArray(lida.dias) && lida.dias.every(ok) ? lida.dias : []
   if (!dias.length) throw new Error('Não encontrei a coluna dos dias no horário.')
   const funcionarios = (Array.isArray(lida.funcionarios) ? lida.funcionarios : [])
     .filter(f => typeof f?.nome === 'string' && f.nome.trim() && f.nome.trim() !== '?')
@@ -86,7 +93,7 @@ export function grelhaDoPdf(lida) {
   // Como no Excel: um dia em que alguém tem "feriado" escrito conta como feriado para quem trabalhou.
   const grelha = {
     folha: `${nomeMes(ano, mes)} (PDF)`,
-    dias: dias.map((dia, i) => ({ dia, feriado: celulas.some(c => c[i].texto === 'feriado') })),
+    dias: dias.map((dia, i) => ({ dia, feriado: lida.feriado?.[i] === true || celulas.some(c => c[i].texto === 'feriado') })),
     funcionarios: funcionarios.map((f, k) => ({ nome: f.nome, celulas: celulas[k] })),
   }
   return { meses: meses.map(m => ({ ...m, folha: nomeMes(m.ano, m.mes) })), ano, mes, grelha }

@@ -60,6 +60,13 @@ describe('horário em PDF', () => {
     expect(fabio.nota).toContain('Horário diurno: 20, 27/10')
   })
 
+  it('conta o feriado escrito ao lado do dia para quem trabalhou', () => {
+    const l = lida()
+    l.feriado = dias.map((_, i) => i === linha(12))
+    const [galia] = contarHorario(grelhaDoPdf(l).grelha, 2026, 10).funcionarios
+    expect(galia.feriados).toEqual([12])
+  })
+
   it('recusa respostas sem mês, dias ou funcionários', () => {
     expect(() => grelhaDoPdf({ ...lida(), mes: 13 })).toThrow(/mês/)
     expect(() => grelhaDoPdf({ ...lida(), dias: [] })).toThrow(/dias/)
@@ -69,6 +76,7 @@ describe('horário em PDF', () => {
   it('o pedido diz que mês transcrever', () => {
     expect(horarioPrompt(2026, 11)).toContain('Novembro 2026')
     expect(horarioPrompt(null, null)).toContain('o mês mais recente')
+    expect(horarioPrompt(2026, 11)).toContain('blocos lado a lado')
   })
 })
 
