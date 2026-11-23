@@ -78,33 +78,49 @@ export function lerHorario(wb, ano, mes) {
   })
   if (!diaCol) throw new Error(`A folha "${ws.name}" não tem a coluna "DIA" na primeira linha.`)
 
-  const linhas = []
+  const dias = []
   for (let r = 3; r <= ws.rowCount; r++) {
     const d = valor(ws.getCell(r, diaCol))
-    if (typeof d === 'number') linhas.push({ r, dia: d })
+    if (typeof d === 'number') dias.push({ r, dia: d, feriado: ws.getRow(r).values.some(v => typeof v === 'string' && norm(v) === 'feriado') })
   }
-  if (!linhas.length) throw new Error(`A folha "${ws.name}" não tem dias.`)
+  const celula = (r, col) => {
+    const e = ws.getCell(r, col), s = ws.getCell(r, col + 1)
+    const c = cor(e)
+    return { entrada: valor(e), saida: valor(s), texto: `${texto(e)} ${texto(s)}`, cor: c === AZUL ? 'azul' : VERMELHOS.includes(c) ? 'vermelho' : '' }
+  }
+  return contarHorario({
+    folha: ws.name,
+    dias: dias.map(({ dia, feriado }) => ({ dia, feriado })),
+    funcionarios: funcionarios.map(({ col, nome }) => ({ nome, celulas: dias.map(({ r }) => celula(r, col)) })),
+  }, ano, mes)
+}
+
+// Conta feriados trabalhados, noites, férias e faltas de um horário já lido (do Excel ou do PDF).
+// grelha: { folha, dias: [{ dia, feriado }], funcionarios: [{ nome, celulas: [{ entrada, saida, texto, cor }] }] },
+// uma célula por dia, pela ordem da folha; cor 'azul' = férias, 'vermelho' = falta justificada.
+export function contarHorario(grelha, ano, mes) {
+  const linhas = grelha.dias
+  if (!linhas.length) throw new Error(`A folha "${grelha.folha}" não tem dias.`)
   // A folha começa no fim do mês anterior (ex.: 28, 29, 30, 1, 2…).
   let data = linhas[0].dia === 1 ? new Date(Date.UTC(ano, mes - 1, 1)) : new Date(Date.UTC(ano, mes - 1, 0))
   if (linhas[0].dia !== 1) data = new Date(Date.UTC(data.getUTCFullYear(), data.getUTCMonth(), linhas[0].dia))
   const fer = feriados(ano)
-  const datas = linhas.map((l, i) => ({ ...l, data: maisDias(data, i) }))
+  const datas = linhas.map((l, i) => ({ ...l, i, data: maisDias(data, i) }))
 
   return {
-    folha: ws.name,
+    folha: grelha.folha,
     mes,
-    funcionarios: funcionarios.map(({ col, nome }) => {
+    funcionarios: grelha.funcionarios.map(({ nome, celulas }) => {
       const res = { nome, feriados: [], noites: 0, diurnos: [], ferias: [], faltas: [] }
-      for (const { r, data: d } of datas) {
+      for (const { i, feriado: marcadoFeriado, data: d } of datas) {
         if (d.getUTCMonth() !== mes - 1 || d.getUTCFullYear() !== ano) continue
         const dia = d.getUTCDate()
-        const e = ws.getCell(r, col), s = ws.getCell(r, col + 1)
-        const txt = `${texto(e)} ${texto(s)}`
-        if (/\bferias\b/.test(txt) || cor(e) === AZUL) { res.ferias.push(dia); continue }
-        if (txt.includes('falta') || VERMELHOS.includes(cor(e))) { res.faltas.push(dia); continue }
-        const hi = hora(valor(e)), hf = hora(valor(s))
+        const c = celulas[i] || {}
+        const txt = norm(c.texto)
+        if (/\bferias\b/.test(txt) || c.cor === 'azul') { res.ferias.push(dia); continue }
+        if (txt.includes('falta') || c.cor === 'vermelho') { res.faltas.push(dia); continue }
+        const hi = hora(c.entrada), hf = hora(c.saida)
         if (hi === null || txt.includes('feriado')) continue // folga, feriado gozado ou vazio
-        const marcadoFeriado = ws.getRow(r).values.some(v => typeof v === 'string' && norm(v) === 'feriado')
         if (fer.has(iso(d)) || marcadoFeriado) res.feriados.push(dia)
         if (hi >= 22 && hf !== null && hf <= 8) res.noites++
         else res.diurnos.push(dia)
@@ -205,13 +221,18 @@ export function montarOrdenados(folha, horario) {
   return { linhas, semPar }
 }
 
+// ficheiroHorario: o Excel do horário, ou { grelha } quando o horário veio de um PDF (ver horarioPdf.js).
 export async function lerOrdenados(ficheiroHorario, ficheiroOrdenados, ano, mes) {
   const { default: ExcelJS } = await import('exceljs')
-  const wbH = new ExcelJS.Workbook()
-  await wbH.xlsx.load(await ficheiroHorario.arrayBuffer())
+  let horario
+  if (ficheiroHorario?.grelha) horario = contarHorario(ficheiroHorario.grelha, ano, mes)
+  else {
+    const wbH = new ExcelJS.Workbook()
+    await wbH.xlsx.load(await ficheiroHorario.arrayBuffer())
+    horario = lerHorario(wbH, ano, mes)
+  }
   const wbO = new ExcelJS.Workbook()
   await wbO.xlsx.load(await ficheiroOrdenados.arrayBuffer())
-  const horario = lerHorario(wbH, ano, mes)
   const folha = lerFolhaContabilidade(wbO)
   return { ...folha, ...montarOrdenados(folha, horario), folhaHorario: horario.folha, ano, mes }
 }
