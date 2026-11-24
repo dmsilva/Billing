@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest'
 import ExcelJS from 'exceljs'
 import { diasMakro, gerarExcel, gerarMapa, gerarPdf, nomeFicheiro, semanasDoMes, trocarPessoa } from '../src/lib/mapaKms.js'
 
+const CAL = { diaInicio: 1, fimPeriodos: { '2026-11': null } } // mês do calendário
+
 const faturas = [
   { data: '2026-11-20', fornecedor: 'MAKRO Cash & Carry Portugal', estado: 'Validada' },
   { data: '2026-11-20', fornecedor: 'Makro', estado: 'Por validar' },
@@ -25,7 +27,7 @@ describe('mapa de kms', () => {
     expect(s.flat()).toHaveLength(25)
   })
 
-  const mapa = gerarMapa({ ano: 2026, mes: 11, makro: diasMakro(faturas, 2026, 11) })
+  const mapa = gerarMapa({ ano: 2026, mes: 11, makro: diasMakro(faturas, 2026, 11), config: CAL })
 
   it('cada dia útil é de uma só pessoa e os dias ficam repartidos', () => {
     const dias = mapa.registos.map(r => r.dia)
@@ -51,7 +53,7 @@ describe('mapa de kms', () => {
 
   it('os dois recebem quase o mesmo (no máximo 50 € de diferença) em vários meses', () => {
     for (let mes = 1; mes <= 12; mes++) for (let v = 0; v < 5; v++) {
-      const m = gerarMapa({ ano: 2027, mes, makro: [3, 9, 13, 20].slice(0, (mes + v) % 5), variante: v })
+      const m = gerarMapa({ ano: 2027, mes, makro: [3, 9, 13, 20].slice(0, (mes + v) % 5), variante: v, config: CAL })
       const [a, b] = m.recibos
       expect(Math.abs(a.total - b.total)).toBeLessThanOrEqual(50)
       expect(Math.abs(a.dias - b.dias)).toBeLessThanOrEqual(1)
@@ -72,16 +74,16 @@ describe('mapa de kms', () => {
 
   it('meses diferentes dão mapas diferentes e o mesmo mês dá sempre o mesmo', () => {
     const dono = m => m.registos.map(r => `${r.dia}:${r.pessoa}`).join(',')
-    expect(dono(gerarMapa({ ano: 2026, mes: 11, makro: [3, 9, 13, 20] }))).toBe(dono(mapa))
-    expect(dono(gerarMapa({ ano: 2026, mes: 11, makro: [3, 9, 13, 20], variante: 1 }))).not.toBe(dono(mapa))
-    const dez = gerarMapa({ ano: 2026, mes: 12 })
+    expect(dono(gerarMapa({ ano: 2026, mes: 11, makro: [3, 9, 13, 20], config: CAL }))).toBe(dono(mapa))
+    expect(dono(gerarMapa({ ano: 2026, mes: 11, makro: [3, 9, 13, 20], variante: 1, config: CAL }))).not.toBe(dono(mapa))
+    const dez = gerarMapa({ ano: 2026, mes: 12, config: CAL })
     const ps = m => m.recibos.flatMap(r => r.linhas).filter(l => l.local === 'Ponte de Sor').map(l => new Date(Date.UTC(m.ano, m.mes - 1, l.dia)).getUTCDay()).sort().join()
     expect(ps(dez)).not.toBe(ps(mapa))
   })
 
   it('trocar um dia passa-o para a outra pessoa', () => {
     const r = mapa.registos[0]
-    const t = trocarPessoa(mapa, r.dia)
+    const t = trocarPessoa(mapa, r.data)
     expect(t.registos[0].pessoa).toBe(1 - r.pessoa)
     expect(t.recibos[0].totalKms + t.recibos[1].totalKms).toBe(mapa.recibos[0].totalKms + mapa.recibos[1].totalKms)
   })
@@ -106,7 +108,7 @@ describe('datas da Makro', () => {
   it('já traz as idas de outubro e novembro de 2026 (incluindo 25/11)', () => {
     expect(diasDoMes(MAKRO_CONHECIDAS, 2026, 11)).toEqual([3, 9, 13, 20, 25])
     expect(diasDoMes(MAKRO_CONHECIDAS, 2026, 10)).toEqual([23, 27])
-    const nov = gerarMapa({ ano: 2026, mes: 11, makro: diasDoMes(MAKRO_CONHECIDAS, 2026, 11) })
+    const nov = gerarMapa({ ano: 2026, mes: 11, makro: diasDoMes(MAKRO_CONHECIDAS, 2026, 11), config: CAL })
     expect(nov.recibos.flatMap(r => r.linhas).filter(l => l.local === 'Makro').map(l => l.dia).sort((a, b) => a - b)).toEqual([3, 9, 13, 20, 25])
   })
 
@@ -147,7 +149,7 @@ describe('idas às lojas pelas faturas', () => {
     expect(idasDasFaturas(fat, 2026, 12)).toEqual({ 2: ['ikea', 'lidl'], 5: ['leroy'], 9: ['makro'] })
   })
   it('cada ida entra no mapa, da mesma pessoa que vai ao Chalet nesse dia', () => {
-    const m = gerarMapa({ ano: 2026, mes: 12, idas: idasDasFaturas(fat, 2026, 12) })
+    const m = gerarMapa({ ano: 2026, mes: 12, idas: idasDasFaturas(fat, 2026, 12), config: CAL })
     const todas = m.recibos.flatMap(r => r.linhas)
     expect(todas.filter(l => l.dia === 2).map(l => l.local).sort()).toEqual(['IKEA', 'Lidl', 'Unidade Chalet do Lago'])
     expect(todas.find(l => l.local === 'IKEA').kms).toBe(28)
@@ -220,5 +222,54 @@ describe('ajudas de custo na folha de ordenados', () => {
     const wb = new ExcelJS.Workbook()
     await wb.xlsx.load(await excelOrdenados({ empresa: 'X', codigos: {}, ano: 2026, mes: 11, linhas: linhas.map(l => ({ ...l, feriados: [], noites: 0, ferias: [], faltas: [], nota: '' })) }))
     expect(wb.worksheets[0].getCell(5, 5).value).toBe(mapa.recibos[0].total)
+  })
+})
+
+import { periodoDoMes, textoPeriodo } from '../src/lib/mapaKms.js'
+
+describe('período de 27 a 26', () => {
+  it('o mapa de novembro vai de 27/10 a 26/11 e o de janeiro de 27/12 a 26/01', () => {
+    const p = periodoDoMes(2026, 10)
+    expect([p.inicio, p.fim]).toEqual(['2026-09-27', '2026-10-26'])
+    expect(textoPeriodo(p)).toBe('27/09/2026 a 26/10/2026')
+    expect([periodoDoMes(2026, 11).inicio, periodoDoMes(2026, 11).fim]).toEqual(['2026-10-27', '2026-11-26'])
+    expect([periodoDoMes(2026, 12).inicio, periodoDoMes(2026, 12).fim]).toEqual(['2026-11-27', '2026-12-26'])
+    expect([periodoDoMes(2027, 1).inicio, periodoDoMes(2027, 1).fim]).toEqual(['2026-12-27', '2027-01-26'])
+    expect(periodoDoMes(2026, 10, 1).fim).toBe('2026-10-31')
+  })
+  it('o fim de um mês pode ser mudado à mão e o seguinte começa no dia a seguir', () => {
+    const fins = { '2027-01': '2027-01-24' }
+    expect(periodoDoMes(2027, 1, 27, fins).fim).toBe('2027-01-24')
+    expect(periodoDoMes(2027, 2, 27, fins).inicio).toBe('2027-01-25')
+  })
+  it('os dias são todos do período, sem repetir entre meses seguidos', () => {
+    const nov = calcularMapa({ invoices: [], ano: 2026, mes: 11 }).mapa
+    const dez = calcularMapa({ invoices: [], ano: 2026, mes: 12 }).mapa
+    const dn = nov.registos.map(r => r.data), dd = dez.registos.map(r => r.data)
+    expect(dn[0]).toBe('2026-10-27')
+    expect(dn.every(d => d >= '2026-10-27' && d <= '2026-11-26')).toBe(true)
+    expect(dd.some(d => dn.includes(d))).toBe(false)
+    expect(dd[0]).toBe('2026-11-27')
+    // Makro conhecidas dentro do período (27/10 e 3, 9, 13, 20, 25 de novembro; 23/10 fica de fora)
+    const makro = nov.recibos.flatMap(r => r.linhas).filter(l => l.local === 'Makro').map(l => l.data).sort()
+    expect(makro).toEqual(['2026-10-27', '2026-11-03', '2026-11-09', '2026-11-13', '2026-11-20', '2026-11-25'])
+    expect(Math.abs(nov.recibos[0].total - nov.recibos[1].total)).toBeLessThanOrEqual(50)
+  })
+  it('as faturas das lojas entram pelo período e o recibo mostra o período', async () => {
+    const fat = [{ data: '2026-10-30', fornecedor: 'IKEA', estado: 'Validada' }, { data: '2026-11-27', fornecedor: 'IKEA', estado: 'Validada' }]
+    const nov = calcularMapa({ invoices: fat, ano: 2026, mes: 11 }).mapa
+    expect(nov.recibos.flatMap(r => r.linhas).filter(l => l.local === 'IKEA').map(l => l.rotulo)).toEqual(['30/10'])
+    const pdf = new TextDecoder('latin1').decode(new Uint8Array(await gerarPdf(nov, 0)))
+    expect(pdf.startsWith('%PDF')).toBe(true)
+    const wb = new ExcelJS.Workbook()
+    await wb.xlsx.load(await gerarExcel(nov, 0))
+    expect(wb.worksheets[0].getCell('C3').value).toBe('27/10 a 26/11')
+    expect(wb.worksheets[0].getCell('A5').value).toBe(nov.recibos[0].linhas[0].rotulo)
+  })
+  it('trocas antigas guardadas como dia do mês continuam a funcionar', () => {
+    const base = calcularMapa({ invoices: [], ano: 2026, mes: 11 }).mapa
+    const dono = base.registos.find(r => r.data === '2026-11-05').pessoa
+    const com = calcularMapa({ invoices: [], ano: 2026, mes: 11, guardado: { meses: { '2026-11': { trocas: [5] } } } }).mapa
+    expect(com.registos.find(r => r.data === '2026-11-05').pessoa).toBe(1 - dono)
   })
 })
