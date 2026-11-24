@@ -98,3 +98,36 @@ describe('mapa de kms', () => {
     expect(String.fromCharCode(...pdf.slice(0, 4))).toBe('%PDF')
   })
 })
+
+import { datasMakroLidas, diasDoMes, MAKRO_CONHECIDAS } from '../src/lib/mapaKms.js'
+import { readMakro } from '../netlify/functions/ler-makro.mjs'
+
+describe('datas da Makro', () => {
+  it('já traz as idas de outubro e novembro de 2026 (incluindo 25/11)', () => {
+    expect(diasDoMes(MAKRO_CONHECIDAS, 2026, 11)).toEqual([3, 9, 13, 20, 25])
+    expect(diasDoMes(MAKRO_CONHECIDAS, 2026, 10)).toEqual([23, 27])
+    const nov = gerarMapa({ ano: 2026, mes: 11, makro: diasDoMes(MAKRO_CONHECIDAS, 2026, 11) })
+    expect(nov.recibos.flatMap(r => r.linhas).filter(l => l.local === 'Makro').map(l => l.dia).sort((a, b) => a - b)).toEqual([3, 9, 13, 20, 25])
+  })
+
+  it('limpa as datas lidas', () => {
+    expect(datasMakroLidas({ datas: ['2026-11-20', '2026-11-20', '20.11.2026', '2026-11-09'] })).toEqual(['2026-11-09', '2026-11-20'])
+  })
+
+  const supa = role => ({
+    auth: { getUser: async t => (t === 'ok' ? { data: { user: { id: 'u1' } } } : { error: { message: 'x' } }) },
+    from: () => ({ select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: role ? { role } : null }) }) }) }),
+  })
+  const claude = (reply, calls = []) => ({ messages: { create: async p => { calls.push(p); return reply } } })
+  const img = { media_type: 'image/jpeg', data: 'AAAA' }
+
+  it('função ler-makro: só admin e devolve as datas', async () => {
+    const ok = { stop_reason: 'end_turn', content: [{ type: 'text', text: '{"datas":["2026-11-20","2026-11-03"]}' }] }
+    expect((await readMakro({ supabase: supa('rececao'), anthropic: claude(ok), token: 'ok', body: { files: [img] } })).status).toBe(403)
+    const calls = []
+    const r = await readMakro({ supabase: supa('admin'), anthropic: claude(ok, calls), token: 'ok', body: { files: [img] } })
+    expect(r.status).toBe(200)
+    expect((await r.json()).datas).toEqual(['2026-11-03', '2026-11-20'])
+    expect(calls[0].messages[0].content[0].type).toBe('image')
+  })
+})
