@@ -16,6 +16,12 @@ export const CONFIG_PADRAO = {
   ponteSorPorSemana: 2,
   makroLinhaAParte: true,
   diferencaMaxima: 50, // € entre o que cada um recebe (Daniel, 2026-11-24)
+  // O mapa de "novembro" vai de 27 de outubro a 26 de novembro (Daniel, 2026-11-24: os recibos são pedidos ao
+  // contabilista por volta do dia 26). 1 = mês do calendário.
+  diaInicio: 27,
+  // Fim de um período diferente do normal: { 'AAAA-MM': 'AAAA-MM-DD' }; o mês seguinte começa no dia a seguir.
+  // Ex.: { "2027-03": "2027-03-24" } faz março acabar a 24 e abril começar a 25. Ajustável na página.
+  fimPeriodos: {},
   pessoas: [
     { nome: 'Patricia Jesus Pereira', viatura: 'AG-44-IG' },
     { nome: 'Joel Matias Santos Mendes', viatura: 'AR-65-LL' },
@@ -43,7 +49,8 @@ export function juntarConfig(guardada) {
   // Configuração antiga: a Makro estava em destinos.makro.
   if (!Array.isArray(g.lojas) && g.destinos?.makro) lojas = lojas.map(l => (l.chave === 'makro' ? { ...l, ...g.destinos.makro } : l))
   lojas = lojas.map(l => ({ tempos: ['1 hora'], objetivo: 'Compras', ...l }))
-  return { ...CONFIG_PADRAO, ...g, pessoas, destinos, lojas }
+  const fimPeriodos = { ...CONFIG_PADRAO.fimPeriodos, ...(g.fimPeriodos || {}) }
+  return { ...CONFIG_PADRAO, ...g, pessoas, destinos, lojas, fimPeriodos }
 }
 
 // Gerador pseudo-aleatório com semente (o mesmo mês dá sempre o mesmo mapa).
@@ -86,6 +93,60 @@ export function semanasDoMes(ano, mes) {
   }
   if (atual.length) semanas.push(atual)
   return semanas
+}
+
+const isoUTC = d => d.toISOString().slice(0, 10)
+const dataUTC = iso => new Date(`${iso}T00:00:00Z`)
+const somaDias = (iso, n) => isoUTC(new Date(dataUTC(iso).getTime() + n * 86400000))
+const diaSemanaIso = iso => dataUTC(iso).getUTCDay()
+export const rotuloDia = iso => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`
+export const semanaDe = iso => SEMANA[diaSemanaIso(iso)]
+
+// Período do mapa de um mês: com diaInicio 27, o de novembro vai de 27/10 a 26/11; com 1, é o mês do calendário.
+// `fins` = fins de período escolhidos à mão ({ 'AAAA-MM': 'AAAA-MM-DD' }): o mês seguinte começa no dia a seguir.
+export function periodoDoMes(ano, mes, diaInicio = CONFIG_PADRAO.diaInicio, fins = CONFIG_PADRAO.fimPeriodos) {
+  const di = Math.min(28, Math.max(1, Math.round(Number(diaInicio) || 1)))
+  const anterior = mes === 1 ? `${ano - 1}-12` : `${ano}-${pad(mes - 1)}`
+  const valida = d => (typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : null)
+  let inicio = di === 1 ? isoDia(ano, mes, 1) : isoDia(mes === 1 ? ano - 1 : ano, mes === 1 ? 12 : mes - 1, di)
+  let fim = di === 1 ? isoDia(ano, mes, new Date(Date.UTC(ano, mes, 0)).getUTCDate()) : isoDia(ano, mes, di - 1)
+  if (valida(fins?.[anterior])) inicio = somaDias(fins[anterior], 1)
+  if (valida(fins?.[`${ano}-${pad(mes)}`])) fim = fins[`${ano}-${pad(mes)}`]
+  if (fim < inicio) fim = inicio
+  const datas = []
+  for (let d = inicio; d <= fim; d = somaDias(d, 1)) datas.push(d)
+  return { inicio, fim, datas, diaInicio: di }
+}
+const fmtData = iso => `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`
+export const textoPeriodo = p => `${fmtData(p.inicio)} a ${fmtData(p.fim)}`
+
+// Dias de segunda a sábado do período, agrupados por semana (a semana começa à segunda).
+export function semanasDoPeriodo(p) {
+  const semanas = []
+  let atual = []
+  for (const d of p.datas) {
+    if (diaSemanaIso(d) === 0) { if (atual.length) semanas.push(atual); atual = []; continue }
+    atual.push(d)
+  }
+  if (atual.length) semanas.push(atual)
+  return semanas
+}
+
+// Datas (AAAA-MM-DD) de uma lista que caem no período.
+export const datasNoPeriodo = (datas, p) => [...new Set((datas || []).filter(d => d >= p.inicio && d <= p.fim))].sort()
+
+// Idas às lojas no período: { 'AAAA-MM-DD': [chave da loja, …] }.
+export function idasNoPeriodo(faturas, p, lojas = CONFIG_PADRAO.lojas) {
+  const idas = {}
+  for (const f of faturas || []) {
+    if (f.estado === 'Rejeitada') continue
+    const data = String(f.data || '').slice(0, 10)
+    if (data < p.inicio || data > p.fim) continue
+    const loja = lojaDaFatura(f, lojas)
+    if (!loja) continue
+    idas[data] = [...new Set([...(idas[data] || []), loja.chave])]
+  }
+  return idas
 }
 
 // Idas à Makro já conhecidas (lista de faturas da app da Makro enviada pelo Daniel em 2026-11-24; 25/11 dito por ele).
@@ -147,19 +208,27 @@ function linha(destino, rnd) {
   return { local: destino.local, cidade: destino.cidade, tempo: escolher(destino.tempos, rnd), objetivo: destino.objetivo, kms: Number(destino.kms) || 0 }
 }
 
-// Gera o mapa do mês. `idas` = { dia: [chaves das lojas] }; `makro` = dias com Makro (atalho).
+// Gera o mapa do mês (período de `periodoDoMes`). `idas` = { data ou dia do mês: [chaves das lojas] };
+// `makro` = datas (ou dias do mês) com Makro (atalho).
 export function gerarMapa({ ano, mes, idas = {}, makro = [], config = CONFIG_PADRAO, variante = 0 }) {
   const cfg = juntarConfig(config)
   const rnd = sorteio(`mapa-kms-${ano}-${mes}-${variante}`)
-  const semanas = semanasDoMes(ano, mes)
+  const periodo = periodoDoMes(ano, mes, cfg.diaInicio, cfg.fimPeriodos)
+  const semanas = semanasDoPeriodo(periodo)
   const uteis = semanas.flat()
-  const total = new Date(Date.UTC(ano, mes, 0)).getUTCDate()
+  const chave = k => (/^\d{1,2}$/.test(String(k)) ? isoDia(ano, mes, Number(k)) : String(k))
   const todas = juntarIdas(idas, idasDeDias(makro, 'makro'))
   const lojaPor = new Map(cfg.lojas.map(l => [l.chave, l]))
-  const idasDia = new Map(Object.entries(todas).map(([d, ks]) => [Number(d), ks.filter(k => lojaPor.has(k))]).filter(([d, ks]) => d >= 1 && d <= total && ks.length))
+  const idasDia = new Map()
+  for (const [k, ks] of Object.entries(todas)) {
+    const d = chave(k), validas = ks.filter(x => lojaPor.has(x))
+    if (d >= periodo.inicio && d <= periodo.fim && validas.length) idasDia.set(d, [...new Set([...(idasDia.get(d) || []), ...validas])])
+  }
   const makroSet = new Set(idasDia.keys())
+  const ordinal = new Map(periodo.datas.map((d, i) => [d, i]))
+  const seguidos = (a, b) => Math.abs(ordinal.get(a) - ordinal.get(b)) === 1
 
-  // Ponte de Sor: 2 dias por semana (1 se a semana do mês tiver menos de 3 dias), nunca em dia de Makro.
+  // Ponte de Sor: 2 dias por semana (1 se a semana tiver menos de 3 dias), nunca em dia de compras.
   const ponteSor = new Set()
   for (const s of semanas) {
     const n = s.length >= 3 ? cfg.ponteSorPorSemana : Math.min(1, cfg.ponteSorPorSemana)
@@ -168,31 +237,31 @@ export function gerarMapa({ ano, mes, idas = {}, makro = [], config = CONFIG_PAD
     const escolhidos = []
     for (const d of livres) {
       if (escolhidos.length >= n) break
-      if (escolhidos.some(e => Math.abs(e - d) === 1) && livres.filter(x => !escolhidos.includes(x) && !escolhidos.some(e => Math.abs(e - x) === 1)).length > 0) continue
+      if (escolhidos.some(e => seguidos(e, d)) && livres.filter(x => !escolhidos.includes(x) && !escolhidos.some(e => seguidos(e, x))).length > 0) continue
       escolhidos.push(d)
     }
     for (const d of livres) { if (escolhidos.length >= n) break; if (!escolhidos.includes(d)) escolhidos.push(d) }
     escolhidos.forEach(d => ponteSor.add(d))
   }
 
-  // Todos os dias (seg–sáb, e domingos com Makro) repartidos entre os dois, metade para cada.
-  const dias = [...new Set([...uteis, ...makroSet])].sort((a, b) => a - b)
+  // Todos os dias (seg–sáb, e domingos com compras) repartidos entre os dois, metade para cada.
+  const dias = [...new Set([...uteis, ...makroSet])].sort()
   const ordem = baralhar(dias, rnd)
   const primeiroFica = rnd() < 0.5 ? Math.ceil(dias.length / 2) : Math.floor(dias.length / 2)
   const dono = new Map(ordem.map((d, i) => [d, i < primeiroFica ? 0 : 1]))
 
-  const registos = dias.map(dia => {
+  const registos = dias.map(data => {
     const linhas = []
-    const domingo = diaSemana(ano, mes, dia) === 0
-    if (makroSet.has(dia)) {
-      for (const k of idasDia.get(dia)) linhas.push(linha(lojaPor.get(k), rnd))
+    const domingo = diaSemanaIso(data) === 0
+    if (makroSet.has(data)) {
+      for (const k of idasDia.get(data)) linhas.push(linha(lojaPor.get(k), rnd))
       if (cfg.makroLinhaAParte && !domingo) linhas.push(linha(cfg.destinos.chalet, rnd))
     } else {
-      linhas.push(linha(ponteSor.has(dia) ? cfg.destinos.ponteSor : cfg.destinos.chalet, rnd))
+      linhas.push(linha(ponteSor.has(data) ? cfg.destinos.ponteSor : cfg.destinos.chalet, rnd))
     }
-    return { dia, pessoa: dono.get(dia), linhas }
+    return { data, dia: Number(data.slice(8, 10)), rotulo: rotuloDia(data), pessoa: dono.get(data), linhas }
   })
-  return montar({ ano, mes, cfg, registos: equilibrar(registos, cfg, rnd), variante })
+  return montar({ ano, mes, cfg, periodo, registos: equilibrar(registos, cfg, rnd), variante })
 }
 
 const kmsDia = r => r.linhas.reduce((s, l) => s + (Number(l.kms) || 0), 0)
@@ -230,27 +299,28 @@ export function equilibrar(registos, cfg, rnd = Math.random) {
 }
 
 // Recalcula os recibos a partir dos registos (usado também depois de trocar um dia de pessoa).
-export function montar({ ano, mes, cfg, registos, variante = 0 }) {
+export function montar({ ano, mes, cfg, periodo, registos, variante = 0 }) {
   const recibos = cfg.pessoas.map((p, i) => {
     const meus = registos.filter(r => r.pessoa === i)
-    const linhas = meus.flatMap(r => r.linhas.map(l => ({ ...l, dia: r.dia })))
+    const linhas = meus.flatMap(r => r.linhas.map(l => ({ ...l, data: r.data, dia: r.dia, rotulo: r.rotulo })))
     const totalKms = linhas.reduce((s, l) => s + (Number(l.kms) || 0), 0)
     const total = Math.round(totalKms * Number(cfg.precoKm) * 100) / 100
     return { ...p, dias: meus.length, linhas, totalKms, total }
   })
-  return { ano, mes, cfg, registos, recibos, variante }
+  return { ano, mes, cfg, periodo: periodo || periodoDoMes(ano, mes, cfg.diaInicio, cfg.fimPeriodos), registos, recibos, variante }
 }
 
-export function trocarPessoa(mapa, dia) {
-  const registos = mapa.registos.map(r => (r.dia === dia ? { ...r, pessoa: 1 - r.pessoa } : r))
+// `data` = 'AAAA-MM-DD' (ou, no formato antigo, o dia do mês).
+export function trocarPessoa(mapa, data) {
+  const d = /^\d{1,2}$/.test(String(data)) ? isoDia(mapa.ano, mapa.mes, Number(data)) : data
+  const registos = mapa.registos.map(r => (r.data === d ? { ...r, pessoa: 1 - r.pessoa } : r))
   return montar({ ...mapa, registos })
 }
 
-// Data do recibo: dia 1 do mês seguinte, como no modelo ("Fátima, 1 / Setembro / 2022").
-export function dataRecibo(ano, mes) {
-  const m = mes === 12 ? 1 : mes + 1
-  const a = mes === 12 ? ano + 1 : ano
-  return { dia: 1, mes: cap(MESES[m - 1]), ano: a }
+// Data do recibo: último dia do período (ex.: 27 / Novembro / 2026), como no modelo ("Fátima, 1 / Setembro / 2022").
+export function dataRecibo(mapa) {
+  const fim = mapa.periodo.fim
+  return { dia: Number(fim.slice(8, 10)), mes: cap(MESES[Number(fim.slice(5, 7)) - 1]), ano: Number(fim.slice(0, 4)) }
 }
 const cap = s => s.charAt(0).toUpperCase() + s.slice(1)
 
@@ -267,7 +337,7 @@ const kmTxt = v => Number(v).toLocaleString('pt-PT')
 
 // ---------- Excel (dois recibos lado a lado, como no modelo) ----------
 const COLS = [
-  { titulo: 'Dia', largura: 6 },
+  { titulo: 'Dia', largura: 8 },
   { titulo: 'Local de Destino', largura: 24 },
   { titulo: 'Tempo de Permanência', largura: 13 },
   { titulo: 'Objetivo da Deslocação', largura: 22 },
@@ -286,7 +356,7 @@ export async function gerarExcel(mapaTodo, pessoa) {
   for (let r = 0; r < mapa.recibos.length; r++) COLS.forEach((c, i) => { ws.getColumn(r * largura + i + 1).width = c.largura })
   ws.getColumn(COLS.length + 1).width = 3
   const nomeMesSo = cap(MESES[mapa.mes - 1])
-  const assin = dataRecibo(mapa.ano, mapa.mes)
+  const assin = dataRecibo(mapa)
   const maxLinhas = Math.max(...mapa.recibos.map(r => r.linhas.length))
 
   mapa.recibos.forEach((rec, k) => {
@@ -303,6 +373,7 @@ export async function gerarExcel(mapaTodo, pessoa) {
     cel(3, 1).alignment = { horizontal: 'right' }
     Object.assign(cel(3, 3), { value: `Mês: ${nomeMesSo.toUpperCase()}`, font: { bold: true }, alignment: { horizontal: 'right' } })
     Object.assign(cel(3, 4), { value: `Ano: ${mapa.ano}`, alignment: { horizontal: 'center' } })
+    Object.assign(cel(3, 2), { value: `${rotuloDia(mapa.periodo.inicio)} a ${rotuloDia(mapa.periodo.fim)}`, font: { size: 9 }, alignment: { horizontal: 'center' } })
     COLS.forEach((c, i) => {
       Object.assign(cel(4, i), { value: c.titulo, font: { bold: true, color: { argb: 'FFFFFFFF' } }, fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: VERDE } }, alignment: { horizontal: 'center', vertical: 'middle', wrapText: true }, border: caixa })
     })
@@ -311,7 +382,7 @@ export async function gerarExcel(mapaTodo, pessoa) {
       const l = rec.linhas[j]
       const r = 5 + j * 2
       for (const i of [0, 2, 3, 4]) ws.mergeCells(r, c0 + i, r + 1, c0 + i)
-      const vals = l ? [l.dia, l.local, l.tempo, l.objetivo, l.kms] : [null, null, null, null, null]
+      const vals = l ? [l.rotulo || l.dia, l.local, l.tempo, l.objetivo, l.kms] : [null, null, null, null, null]
       vals.forEach((v, i) => { const c = cel(r, i); c.value = v; c.alignment = { horizontal: 'center', vertical: 'middle' }; c.border = caixa })
       Object.assign(cel(r + 1, 1), { value: l ? l.cidade : null, alignment: { horizontal: 'center', vertical: 'middle' }, border: caixa })
       cel(r, 0).font = { bold: true, size: 13 }
@@ -359,7 +430,7 @@ export async function gerarPdf(mapa, pessoa) {
   const margem = um ? 18 : 7, espaco = 5
   const larg = um ? 210 - 2 * margem : (210 - 2 * margem - espaco) / 2
   const nomeMesSo = cap(MESES[mapa.mes - 1])
-  const assin = dataRecibo(mapa.ano, mapa.mes)
+  const assin = dataRecibo(mapa)
   const maxLinhas = Math.max(...recibos.map(r => r.linhas.length))
   // Encolhe a letra quando há muitas linhas para caber tudo numa página.
   const fonte = (maxLinhas > 26 ? 5.6 : maxLinhas > 20 ? 6.2 : 7) * (um ? (maxLinhas > 26 ? 1.25 : 1.4) : 1)
@@ -377,9 +448,10 @@ export async function gerarPdf(mapa, pessoa) {
     doc.setFontSize(7.5 * e); doc.setFont('times', 'normal')
     doc.text(`Contribuinte nº  ${mapa.cfg.nif}`, x, 23 * e)
     doc.text(`Mês: ${nomeMesSo.toUpperCase()}   Ano: ${mapa.ano}`, x + larg, 23 * e, { align: 'right' })
-    const body = rec.linhas.map(l => [String(l.dia), l.cidade ? `${l.local}\n${l.cidade}` : l.local, l.tempo, l.objetivo, kmTxt(l.kms)])
+    doc.setFontSize(6.5 * e); doc.text(`Período: ${textoPeriodo(mapa.periodo)}`, x + larg, 25.6 * e, { align: 'right' }); doc.setFontSize(7.5 * e)
+    const body = rec.linhas.map(l => [String(l.rotulo || l.dia), l.cidade ? `${l.local}\n${l.cidade}` : l.local, l.tempo, l.objetivo, kmTxt(l.kms)])
     autoTable(doc, {
-      startY: 26 * e,
+      startY: 27.5 * e,
       margin: { left: x },
       tableWidth: larg,
       head: [COLS.map(c => (c.titulo === 'Kms. Percorridos' ? 'Kms.' : c.titulo))],
@@ -387,7 +459,7 @@ export async function gerarPdf(mapa, pessoa) {
       theme: 'grid',
       styles: { font: 'times', fontSize: fonte, cellPadding: 0.8 * e, halign: 'center', valign: 'middle', lineColor: [90, 90, 90], lineWidth: 0.15, textColor: 20 },
       headStyles: { fillColor: verde, textColor: 255, fontStyle: 'bold' },
-      columnStyles: { 0: { cellWidth: 8 * e, fontStyle: 'bold', fontSize: fonte + 2 }, 1: { cellWidth: 30 * e }, 2: { cellWidth: 16 * e }, 3: { cellWidth: 'auto' }, 4: { cellWidth: 13 * e, fontStyle: 'bold' } },
+      columnStyles: { 0: { cellWidth: 11 * e, fontStyle: 'bold', fontSize: fonte + 1 }, 1: { cellWidth: 29 * e }, 2: { cellWidth: 16 * e }, 3: { cellWidth: 'auto' }, 4: { cellWidth: 13 * e, fontStyle: 'bold' } },
       didParseCell: h => { if (h.section === 'body') h.cell.styles.fillColor = h.row.index % 2 ? [235, 241, 222] : [255, 255, 255] },
     })
     let y = doc.lastAutoTable.finalY + 6 * e
@@ -423,19 +495,22 @@ export function lerGuardado(storage = globalThis.localStorage) {
 export function calcularMapa({ invoices, ano, mes, guardado = {} }) {
   const cfg = juntarConfig(guardado.config)
   const doMes = guardado.meses?.[`${ano}-${pad(mes)}`] || {}
+  const periodo = periodoDoMes(ano, mes, cfg.diaInicio, cfg.fimPeriodos)
+  // Formato antigo: dias do mês (números) em vez de datas.
+  const data = d => (/^\d{1,2}$/.test(String(d)) ? isoDia(ano, mes, Number(d)) : String(d))
   const automaticas = juntarIdas(
-    idasDasFaturas(invoices, ano, mes, cfg.lojas),
-    idasDeDias(diasDoMes(MAKRO_CONHECIDAS, ano, mes), 'makro'),
-    idasDeDias(diasDoMes(guardado.makroDatas, ano, mes), 'makro'),
+    idasNoPeriodo(invoices, periodo, cfg.lojas),
+    idasDeDias(datasNoPeriodo(MAKRO_CONHECIDAS, periodo), 'makro'),
+    idasDeDias(datasNoPeriodo(guardado.makroDatas, periodo), 'makro'),
   )
-  // Idas juntadas/tiradas à mão (formato antigo: só Makro).
-  const extra = [...(doMes.idasExtra || []), ...(doMes.makroExtra || []).map(dia => ({ dia, loja: 'makro' }))]
-  const tirar = [...(doMes.idasTirar || []), ...(doMes.makroTirar || []).map(d => `${d}:makro`)]
-  const idas = juntarIdas(automaticas, ...extra.map(x => ({ [x.dia]: [x.loja] })))
+  // Idas juntadas/tiradas à mão.
+  const extra = [...(doMes.idasExtra || []).map(x => ({ data: data(x.data ?? x.dia), loja: x.loja })), ...(doMes.makroExtra || []).map(d => ({ data: data(d), loja: 'makro' }))]
+  const tirar = [...(doMes.idasTirar || []), ...(doMes.makroTirar || []).map(d => `${d}:makro`)].map(t => { const [d, k] = t.split(':'); return `${data(d)}:${k}` })
+  const idas = juntarIdas(automaticas, ...extra.map(x => ({ [x.data]: [x.loja] })))
   for (const t of tirar) { const [d, k] = t.split(':'); if (idas[d]) idas[d] = idas[d].filter(x => x !== k) }
   const base = gerarMapa({ ano, mes, idas, config: cfg, variante: doMes.variante || 0 })
   const mapa = (doMes.trocas || []).reduce((r, d) => trocarPessoa(r, d), base)
-  return { cfg, doMes, automaticas, idas, mapa }
+  return { cfg, doMes, periodo, automaticas, idas, mapa }
 }
 
 // A pessoa do mapa corresponde a um nome da folha de ordenados? (primeiro e último nome iguais;
