@@ -131,3 +131,50 @@ describe('datas da Makro', () => {
     expect(calls[0].messages[0].content[0].type).toBe('image')
   })
 })
+
+import { idasDasFaturas } from '../src/lib/mapaKms.js'
+
+describe('idas às lojas pelas faturas', () => {
+  const fat = [
+    { data: '2026-12-02', fornecedor: 'IKEA Portugal - Moveis e Decoração, Lda', estado: 'Validada' },
+    { data: '2026-12-02', fornecedor: 'Lidl & Companhia', estado: 'Por validar' },
+    { data: '2026-12-05', fornecedor: 'LEROY MERLIN - Bricolage', estado: 'Validada' },
+    { data: '2026-12-09', fornecedor: 'Makro Cash & Carry', estado: 'Validada' },
+    { data: '2026-12-10', fornecedor: 'Continente', estado: 'Validada' },
+    { data: '2026-12-11', fornecedor: 'IKEA', estado: 'Rejeitada' },
+  ]
+  it('reconhece IKEA, Lidl, Leroy Merlin e Makro', () => {
+    expect(idasDasFaturas(fat, 2026, 12)).toEqual({ 2: ['ikea', 'lidl'], 5: ['leroy'], 9: ['makro'] })
+  })
+  it('cada ida entra no mapa, da mesma pessoa que vai ao Chalet nesse dia', () => {
+    const m = gerarMapa({ ano: 2026, mes: 12, idas: idasDasFaturas(fat, 2026, 12) })
+    const todas = m.recibos.flatMap(r => r.linhas)
+    expect(todas.filter(l => l.dia === 2).map(l => l.local).sort()).toEqual(['IKEA', 'Lidl', 'Unidade Chalet do Lago'])
+    expect(todas.find(l => l.local === 'IKEA').kms).toBe(28)
+    expect(todas.find(l => l.local === 'Leroy Merlin').dia).toBe(5)
+    for (const r of m.recibos) {
+      const outros = new Set(m.recibos.filter(x => x !== r).flatMap(x => x.linhas.map(l => l.dia)))
+      for (const l of r.linhas) expect(outros.has(l.dia)).toBe(false)
+    }
+    expect(Math.abs(m.recibos[0].total - m.recibos[1].total)).toBeLessThanOrEqual(50)
+  })
+})
+
+describe('assinaturas', () => {
+  // PNG 1×1 transparente
+  const png = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII='
+  const config = { pessoas: [{ assinatura: { src: png, ratio: 3 } }, { assinatura: { src: png, ratio: 2.5 } }] }
+  const m = gerarMapa({ ano: 2026, mes: 11, makro: [3, 9], config })
+  it('ficam no recibo de cada um e entram no PDF e no Excel', async () => {
+    expect(m.recibos.every(r => r.assinatura?.src === png)).toBe(true)
+    const pdf = new Uint8Array(await gerarPdf(m))
+    expect(new TextDecoder('latin1').decode(pdf)).toContain('/Subtype /Image')
+    const wb = new ExcelJS.Workbook()
+    await wb.xlsx.load(await gerarExcel(m))
+    expect(wb.worksheets[0].getImages()).toHaveLength(2)
+  })
+  it('sem assinatura o PDF não leva imagens', async () => {
+    const pdf = new Uint8Array(await gerarPdf(gerarMapa({ ano: 2026, mes: 11 })))
+    expect(new TextDecoder('latin1').decode(pdf)).not.toContain('/Subtype /Image')
+  })
+})
