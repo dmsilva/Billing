@@ -28,7 +28,7 @@ export const CONFIG_PADRAO = {
   // `procura` = palavra que aparece no fornecedor da fatura. Kms = ida e volta desde Lisboa.
   lojas: [
     { chave: 'makro', procura: 'makro', local: 'Makro', cidade: 'Lisboa', kms: 20, tempos: ['1 hora', '1,5 horas', '2 horas'], objetivo: 'Compras' },
-    { chave: 'ikea', procura: 'ikea', local: 'IKEA', cidade: 'Alfragide', kms: 15, tempos: ['1 hora', '1,5 horas', '2 horas'], objetivo: 'Compras' },
+    { chave: 'ikea', procura: 'ikea', local: 'IKEA', cidade: 'Loures', kms: 28, tempos: ['1 hora', '1,5 horas', '2 horas'], objetivo: 'Compras' },
     { chave: 'lidl', procura: 'lidl', local: 'Lidl', cidade: 'Lisboa', kms: 10, tempos: ['1 hora'], objetivo: 'Compras' },
     { chave: 'leroy', procura: 'leroy', local: 'Leroy Merlin', cidade: 'Telheiras', kms: 10, tempos: ['1 hora', '1,5 horas'], objetivo: 'Compras' },
   ],

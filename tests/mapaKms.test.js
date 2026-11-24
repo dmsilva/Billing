@@ -150,7 +150,7 @@ describe('idas às lojas pelas faturas', () => {
     const m = gerarMapa({ ano: 2026, mes: 12, idas: idasDasFaturas(fat, 2026, 12) })
     const todas = m.recibos.flatMap(r => r.linhas)
     expect(todas.filter(l => l.dia === 2).map(l => l.local).sort()).toEqual(['IKEA', 'Lidl', 'Unidade Chalet do Lago'])
-    expect(todas.find(l => l.local === 'IKEA').kms).toBe(15)
+    expect(todas.find(l => l.local === 'IKEA').kms).toBe(28)
     expect(todas.find(l => l.local === 'Leroy Merlin').dia).toBe(5)
     for (const r of m.recibos) {
       const outros = new Set(m.recibos.filter(x => x !== r).flatMap(x => x.linhas.map(l => l.dia)))
