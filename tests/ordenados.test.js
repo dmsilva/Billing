@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import ExcelJS from 'exceljs'
-import { casarNome, feriados, gerarExcel, gerarPdf, hora, lerData, lerOrdenados, lerVencimento } from '../src/lib/ordenados.js'
+import { casarNome, corrigir, feriados, gerarExcel, gerarPdf, hora, lerData, lerOrdenados, lerVencimento, qtd } from '../src/lib/ordenados.js'
 
 const fill = argb => ({ type: 'pattern', pattern: 'solid', fgColor: { argb } })
 const ficheiro = async wb => { const b = await wb.xlsx.writeBuffer(); return { name: 'x.xlsx', arrayBuffer: async () => b } }
@@ -84,6 +84,27 @@ describe('ordenados para a contabilidade', () => {
     expect(ws.getCell('A5').fill?.fgColor?.argb).toBeUndefined()
     expect(ws.getCell('L6').fill.fgColor.argb).toBe('FFE5E5E5')
     expect(ws.getCell('A7').fill?.fgColor?.argb).toBeUndefined()
+  })
+
+  it('aceita correções à mão dos feriados, noites, férias e faltas', async () => {
+    const d = await lerOrdenados(await horario(), await ordenados(), 2026, 10)
+    let galina = d.linhas[0]
+    expect(qtd(galina, 'ferias')).toBe(2)
+    galina = corrigir(galina, 'ferias', '3')
+    galina = corrigir(galina, 'noites', '4')
+    galina = corrigir(galina, 'faltas', '0')
+    galina = corrigir(galina, 'feriados', '0') // igual ao horário: não fica como correção
+    expect(galina.corrigido).toEqual({ ferias: 3, noites: 4, faltas: 0 })
+    expect([qtd(galina, 'ferias'), qtd(galina, 'noites'), qtd(galina, 'faltas')]).toEqual([3, 4, 0])
+    expect(galina.ferias).toEqual([1, 2]) // os dias do horário ficam guardados
+    // Apagar o número volta ao do horário; texto inválido também
+    expect(qtd(corrigir(galina, 'ferias', ''), 'ferias')).toBe(2)
+    expect(qtd(corrigir(galina, 'ferias', 'abc'), 'ferias')).toBe(2)
+    d.linhas[0] = galina
+    const wb = new ExcelJS.Workbook()
+    await wb.xlsx.load(await gerarExcel(d))
+    expect(wb.worksheets[0].getCell('K5').value).toBe(3)
+    expect(wb.worksheets[0].getCell('G5').value).toBe(4)
   })
 
   it('gera o PDF', async () => {
