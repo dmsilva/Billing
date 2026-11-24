@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import ExcelJS from 'exceljs'
-import { diasMakro, gerarExcel, gerarMapa, gerarPdf, semanasDoMes, trocarPessoa } from '../src/lib/mapaKms.js'
+import { diasMakro, gerarExcel, gerarMapa, gerarPdf, nomeFicheiro, semanasDoMes, trocarPessoa } from '../src/lib/mapaKms.js'
 
 const faturas = [
   { data: '2026-11-20', fornecedor: 'MAKRO Cash & Carry Portugal', estado: 'Validada' },
@@ -176,5 +176,49 @@ describe('assinaturas', () => {
   it('sem assinatura o PDF não leva imagens', async () => {
     const pdf = new Uint8Array(await gerarPdf(gerarMapa({ ano: 2026, mes: 11 })))
     expect(new TextDecoder('latin1').decode(pdf)).not.toContain('/Subtype /Image')
+  })
+})
+
+describe('um ficheiro por pessoa', () => {
+  const m = gerarMapa({ ano: 2026, mes: 11, makro: [3, 9] })
+  it('PDF e Excel só com o recibo de cada um', async () => {
+    for (const i of [0, 1]) {
+      const pdf = new TextDecoder('latin1').decode(new Uint8Array(await gerarPdf(m, i)))
+      expect(pdf.startsWith('%PDF')).toBe(true)
+      const wb = new ExcelJS.Workbook()
+      await wb.xlsx.load(await gerarExcel(m, i))
+      const ws = wb.worksheets[0]
+      const textos = []
+      ws.eachRow(r => r.eachCell(c => textos.push(String(c.value ?? ''))))
+      const nome = m.recibos[i].nome.toUpperCase(), outro = m.recibos[1 - i].nome.toUpperCase()
+      expect(textos.some(t => t.includes(nome))).toBe(true)
+      expect(textos.some(t => t.includes(outro))).toBe(false)
+    }
+    expect(nomeFicheiro(m, 1)).toBe('Mapa_de_Kms_Novembro_2026_Joel')
+  })
+})
+
+import { mesmaPessoa, calcularMapa } from '../src/lib/mapaKms.js'
+import { juntarAjudasCusto, gerarExcel as excelOrdenados } from '../src/lib/ordenados.js'
+
+describe('ajudas de custo na folha de ordenados', () => {
+  it('casa os nomes da folha com os do mapa (sem confundir Joel com Joelma)', () => {
+    expect(mesmaPessoa('Patricia de Jesus Pereira', 'Patricia Jesus Pereira')).toBe(true)
+    expect(mesmaPessoa('Joel Matias dos Santos Mendes', 'Joel Matias Santos Mendes')).toBe(true)
+    expect(mesmaPessoa('Joelma Jesus Figueiredo', 'Joel Matias Santos Mendes')).toBe(false)
+  })
+  it('põe o total do mapa de cada um em Ajud. Custo, no ecrã e no Excel', async () => {
+    const { mapa } = calcularMapa({ invoices: [], ano: 2026, mes: 11 })
+    const linhas = juntarAjudasCusto([
+      { codigo: 1, nome: 'Patricia de Jesus Pereira' }, { codigo: 2, nome: 'Joel Matias dos Santos Mendes' },
+      { codigo: 102, nome: 'Joelma Jesus Figueiredo' }, { codigo: 3, nome: 'Outro', ajudCusto: 5, ajudCustoMao: true },
+    ], mapa.recibos, mesmaPessoa)
+    expect(linhas[0].ajudCusto).toBe(mapa.recibos[0].total)
+    expect(linhas[1].ajudCusto).toBe(mapa.recibos[1].total)
+    expect(linhas[2].ajudCusto).toBeUndefined()
+    expect(linhas[3].ajudCusto).toBe(5)
+    const wb = new ExcelJS.Workbook()
+    await wb.xlsx.load(await excelOrdenados({ empresa: 'X', codigos: {}, ano: 2026, mes: 11, linhas: linhas.map(l => ({ ...l, feriados: [], noites: 0, ferias: [], faltas: [], nota: '' })) }))
+    expect(wb.worksheets[0].getCell(5, 5).value).toBe(mapa.recibos[0].total)
   })
 })

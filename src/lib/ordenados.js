@@ -272,7 +272,7 @@ export const COLUNAS = [
   { titulo: 'Nome', largura: 38, mm: 58, campo: 'nome', esquerda: true },
   { titulo: 'Venc.', largura: 12, mm: 20, campo: 'vencimento' },
   { titulo: 'Data', cima: 'Admissão', largura: 12, mm: 19, campo: 'admissao' },
-  { titulo: 'Ajud. Custo', codigo: 'ajudCusto', largura: 11, mm: 17 },
+  { titulo: 'Ajud. Custo', codigo: 'ajudCusto', largura: 11, mm: 17, campo: l => (Number(l.ajudCusto) > 0 ? Number(l.ajudCusto) : null), euro: true },
   { titulo: 'Feriado', codigo: 'feriado', largura: 9, mm: 14, campo: l => qtd(l, 'feriados') || null },
   { titulo: 'Noites', codigo: 'noites', largura: 9, mm: 14, campo: l => qtd(l, 'noites') || null },
   { titulo: 'Bx. Médica', codigo: 'bxMedica', largura: 11, mm: 17 },
@@ -323,7 +323,7 @@ export async function gerarExcel(dados) {
       const cell = row.getCell(i + 1)
       const v = valorDe(l, c)
       cell.value = v === '' || v === undefined ? null : v
-      if (c.campo === 'vencimento') cell.numFmt = '#,##0.00 "€"'
+      if (c.campo === 'vencimento' || c.euro) cell.numFmt = '#,##0.00 "€"'
       cell.alignment = { horizontal: c.esquerda ? 'left' : 'center', vertical: 'middle', wrapText: c.campo === 'nota' }
       if (c.campo === 'vencimento') cell.alignment = { horizontal: 'right', vertical: 'middle' }
       cell.border = bordas
@@ -343,7 +343,7 @@ export async function gerarPdf(dados) {
   doc.text(`Ordenados de ${nomeMes(dados.ano, dados.mes)}`, 10, 18)
   const formatar = (l, c) => {
     const v = valorDe(l, c)
-    if (c.campo === 'vencimento') return fmtEuro(v)
+    if (c.campo === 'vencimento' || c.euro) return fmtEuro(v)
     return v === null || v === undefined ? '' : String(v)
   }
   const azul = [153, 204, 255]
@@ -361,9 +361,19 @@ export async function gerarPdf(dados) {
     didParseCell: h => { if (h.section === 'body') h.cell.styles.fillColor = h.row.index % 2 ? [229, 229, 229] : [255, 255, 255] },
     columnStyles: Object.fromEntries(COLUNAS.map((c, i) => [i, {
       cellWidth: c.mm ?? 'auto',
-      halign: c.esquerda ? 'left' : c.campo === 'vencimento' ? 'right' : 'center',
+      halign: c.esquerda ? 'left' : c.campo === 'vencimento' || c.euro ? 'right' : 'center',
     }])),
     margin: { left: 10, right: 10 },
   })
   return doc.output('arraybuffer')
+}
+
+// Ajudas de custo (kms) de cada linha a partir do mapa de kms do mês (Patrícia e Joel).
+// Só preenche quem não tem já um valor escrito à mão (ajudCustoMao).
+export function juntarAjudasCusto(linhas, recibos, mesma) {
+  return linhas.map(l => {
+    if (l.ajudCustoMao) return l
+    const r = recibos.find(x => mesma(l.nome, x.nome))
+    return r ? { ...l, ajudCusto: r.total, ajudCustoDoMapa: r.total } : l
+  })
 }

@@ -261,7 +261,7 @@ export function assinaturaValida(a) {
   return { src: a.src, ratio: ratio > 0.2 && ratio < 20 ? ratio : 3 }
 }
 
-export const nomeFicheiro = mapa => `Mapa_de_Kms_${nomeMes(mapa.ano, mapa.mes).replace(' ', '_')}`
+export const nomeFicheiro = (mapa, pessoa) => `Mapa_de_Kms_${nomeMes(mapa.ano, mapa.mes).replace(' ', '_')}${pessoa === 0 || pessoa === 1 ? `_${mapa.recibos[pessoa].nome.split(' ')[0]}` : ''}`
 const euro = v => Number(v).toLocaleString('pt-PT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const kmTxt = v => Number(v).toLocaleString('pt-PT')
 
@@ -275,7 +275,8 @@ const COLS = [
 ]
 const VERDE = 'FF8EA65B', VERDE_CLARO = 'FFEBF1DE'
 
-export async function gerarExcel(mapa) {
+export async function gerarExcel(mapaTodo, pessoa) {
+  const mapa = pessoa === 0 || pessoa === 1 ? { ...mapaTodo, recibos: [mapaTodo.recibos[pessoa]] } : mapaTodo
   const { default: ExcelJS } = await import('exceljs')
   const wb = new ExcelJS.Workbook()
   const ws = wb.addWorksheet(nomeMes(mapa.ano, mapa.mes))
@@ -348,62 +349,100 @@ export async function gerarExcel(mapa) {
 }
 
 // ---------- PDF (uma página A4 ao alto com os dois recibos lado a lado) ----------
-export async function gerarPdf(mapa) {
+// `pessoa` (0 ou 1): só o recibo dessa pessoa, maior, numa página A4. Sem `pessoa`: os dois lado a lado.
+export async function gerarPdf(mapa, pessoa) {
+  const um = pessoa === 0 || pessoa === 1
+  const recibos = um ? [mapa.recibos[pessoa]] : mapa.recibos
+  const e = um ? 1.45 : 1 // escala da letra e das medidas
   const [{ jsPDF }, { default: autoTable }] = await Promise.all([import('jspdf'), import('jspdf-autotable')])
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
-  const margem = 7, espaco = 5
-  const larg = (210 - 2 * margem - espaco) / 2
+  const margem = um ? 18 : 7, espaco = 5
+  const larg = um ? 210 - 2 * margem : (210 - 2 * margem - espaco) / 2
   const nomeMesSo = cap(MESES[mapa.mes - 1])
   const assin = dataRecibo(mapa.ano, mapa.mes)
-  const maxLinhas = Math.max(...mapa.recibos.map(r => r.linhas.length))
+  const maxLinhas = Math.max(...recibos.map(r => r.linhas.length))
   // Encolhe a letra quando há muitas linhas para caber tudo numa página.
-  const fonte = maxLinhas > 26 ? 5.6 : maxLinhas > 20 ? 6.2 : 7
+  const fonte = (maxLinhas > 26 ? 5.6 : maxLinhas > 20 ? 6.2 : 7) * (um ? (maxLinhas > 26 ? 1.25 : 1.4) : 1)
   const verde = [142, 166, 91]
 
-  mapa.recibos.forEach((rec, k) => {
+  recibos.forEach((rec, k) => {
     const x = margem + k * (larg + espaco)
-    doc.setFont('times', 'bold'); doc.setFontSize(10)
-    doc.text('Compensação por deslocação em viatura própria', x + larg / 2, 11, { align: 'center' })
-    doc.setLineWidth(0.2); doc.line(x + 8, 12, x + larg - 8, 12)
-    doc.setFontSize(7.5); doc.setFont('times', 'normal')
-    doc.text('Firma:', x, 18)
-    doc.setFont('times', 'bolditalic'); doc.text(mapa.cfg.firma, x + 9, 18)
-    doc.setFont('times', 'bold'); doc.setFontSize(10); doc.text('RECIBO', x + larg - 4, 18, { align: 'right' })
-    doc.setFontSize(7.5); doc.setFont('times', 'normal')
-    doc.text(`Contribuinte nº  ${mapa.cfg.nif}`, x, 23)
-    doc.text(`Mês: ${nomeMesSo.toUpperCase()}   Ano: ${mapa.ano}`, x + larg, 23, { align: 'right' })
+    doc.setFont('times', 'bold'); doc.setFontSize(10 * e)
+    doc.text('Compensação por deslocação em viatura própria', x + larg / 2, 11 * e, { align: 'center' })
+    doc.setLineWidth(0.2); doc.line(x + 8, 12 * e, x + larg - 8, 12 * e)
+    doc.setFontSize(7.5 * e); doc.setFont('times', 'normal')
+    doc.text('Firma:', x, 18 * e)
+    doc.setFont('times', 'bolditalic'); doc.text(mapa.cfg.firma, x + 9 * e, 18 * e)
+    doc.setFont('times', 'bold'); doc.setFontSize(10 * e); doc.text('RECIBO', x + larg - 4, 18 * e, { align: 'right' })
+    doc.setFontSize(7.5 * e); doc.setFont('times', 'normal')
+    doc.text(`Contribuinte nº  ${mapa.cfg.nif}`, x, 23 * e)
+    doc.text(`Mês: ${nomeMesSo.toUpperCase()}   Ano: ${mapa.ano}`, x + larg, 23 * e, { align: 'right' })
     const body = rec.linhas.map(l => [String(l.dia), l.cidade ? `${l.local}\n${l.cidade}` : l.local, l.tempo, l.objetivo, kmTxt(l.kms)])
     autoTable(doc, {
-      startY: 26,
+      startY: 26 * e,
       margin: { left: x },
       tableWidth: larg,
       head: [COLS.map(c => (c.titulo === 'Kms. Percorridos' ? 'Kms.' : c.titulo))],
       body,
       theme: 'grid',
-      styles: { font: 'times', fontSize: fonte, cellPadding: 0.8, halign: 'center', valign: 'middle', lineColor: [90, 90, 90], lineWidth: 0.15, textColor: 20 },
+      styles: { font: 'times', fontSize: fonte, cellPadding: 0.8 * e, halign: 'center', valign: 'middle', lineColor: [90, 90, 90], lineWidth: 0.15, textColor: 20 },
       headStyles: { fillColor: verde, textColor: 255, fontStyle: 'bold' },
-      columnStyles: { 0: { cellWidth: 8, fontStyle: 'bold', fontSize: fonte + 2 }, 1: { cellWidth: 30 }, 2: { cellWidth: 16 }, 3: { cellWidth: 'auto' }, 4: { cellWidth: 13, fontStyle: 'bold' } },
+      columnStyles: { 0: { cellWidth: 8 * e, fontStyle: 'bold', fontSize: fonte + 2 }, 1: { cellWidth: 30 * e }, 2: { cellWidth: 16 * e }, 3: { cellWidth: 'auto' }, 4: { cellWidth: 13 * e, fontStyle: 'bold' } },
       didParseCell: h => { if (h.section === 'body') h.cell.styles.fillColor = h.row.index % 2 ? [235, 241, 222] : [255, 255, 255] },
     })
-    let y = doc.lastAutoTable.finalY + 6
-    doc.setFontSize(7.5); doc.setFont('times', 'normal')
+    let y = doc.lastAutoTable.finalY + 6 * e
+    doc.setFontSize(7.5 * e); doc.setFont('times', 'normal')
     const linhaTotal = (rot, val, negrito) => {
-      doc.setFont('times', 'normal'); doc.text(rot, x + larg - 16, y, { align: 'right' })
-      doc.setFont('times', negrito ? 'bold' : 'normal'); doc.rect(x + larg - 15, y - 3.2, 15, 4.4); doc.text(val, x + larg - 1, y, { align: 'right' })
+      doc.setFont('times', 'normal'); doc.text(rot, x + larg - 16 * e, y, { align: 'right' })
+      doc.setFont('times', negrito ? 'bold' : 'normal'); doc.rect(x + larg - 15 * e, y - 3.2 * e, 15 * e, 4.4 * e); doc.text(val, x + larg - 1, y, { align: 'right' })
     }
     doc.text(`NOME: ${rec.nome.toUpperCase()}`, x, y)
-    linhaTotal('Total de Kms.', kmTxt(rec.totalKms), true); y += 5
+    linhaTotal('Total de Kms.', kmTxt(rec.totalKms), true); y += 5 * e
     doc.setFont('times', 'normal'); doc.text(`VIATURA: ${rec.viatura}`, x, y)
-    linhaTotal('Preço por Km.', `${euro(mapa.cfg.precoKm)} €`); y += 5
-    linhaTotal('Total a Receber', `${euro(rec.total)} €`, true); y += assinaturaValida(rec.assinatura) ? 20 : 9
+    linhaTotal('Preço por Km.', `${euro(mapa.cfg.precoKm)} €`); y += 5 * e
+    linhaTotal('Total a Receber', `${euro(rec.total)} €`, true); y += (assinaturaValida(rec.assinatura) ? 20 : 9) * e
     doc.setFont('times', 'normal')
     doc.text(`${mapa.cfg.localAssinatura},   ${assin.dia} / ${assin.mes} / ${assin.ano}`, x + 2, y)
-    doc.line(x + larg - 38, y, x + larg - 2, y)
+    doc.line(x + larg - 38 * e, y, x + larg - 2, y)
     const a = assinaturaValida(rec.assinatura)
     if (a) {
-      const alt = Math.min(14, 36 / a.ratio), w = alt * a.ratio
-      doc.addImage(a.src, 'PNG', x + larg - 20 - w / 2, y - alt - 0.5, w, alt)
+      const alt = Math.min(14 * e, 36 * e / a.ratio), w = alt * a.ratio
+      doc.addImage(a.src, 'PNG', x + larg - 2 - 18 * e - w / 2, y - alt - 0.5, w, alt)
     }
   })
   return doc.output('arraybuffer')
+}
+
+// ---------- Estado guardado no navegador (página Mapa de kms) ----------
+export const CHAVE_GUARDADO = 'faturaclaro-mapa-kms'
+export function lerGuardado(storage = globalThis.localStorage) {
+  try { return JSON.parse(storage?.getItem(CHAVE_GUARDADO) || '{}') || {} } catch { return {} }
+}
+
+// O mapa do mês tal como aparece na página: faturas das lojas + datas da Makro + idas à mão + trocas.
+export function calcularMapa({ invoices, ano, mes, guardado = {} }) {
+  const cfg = juntarConfig(guardado.config)
+  const doMes = guardado.meses?.[`${ano}-${pad(mes)}`] || {}
+  const automaticas = juntarIdas(
+    idasDasFaturas(invoices, ano, mes, cfg.lojas),
+    idasDeDias(diasDoMes(MAKRO_CONHECIDAS, ano, mes), 'makro'),
+    idasDeDias(diasDoMes(guardado.makroDatas, ano, mes), 'makro'),
+  )
+  // Idas juntadas/tiradas à mão (formato antigo: só Makro).
+  const extra = [...(doMes.idasExtra || []), ...(doMes.makroExtra || []).map(dia => ({ dia, loja: 'makro' }))]
+  const tirar = [...(doMes.idasTirar || []), ...(doMes.makroTirar || []).map(d => `${d}:makro`)]
+  const idas = juntarIdas(automaticas, ...extra.map(x => ({ [x.dia]: [x.loja] })))
+  for (const t of tirar) { const [d, k] = t.split(':'); if (idas[d]) idas[d] = idas[d].filter(x => x !== k) }
+  const base = gerarMapa({ ano, mes, idas, config: cfg, variante: doMes.variante || 0 })
+  const mapa = (doMes.trocas || []).reduce((r, d) => trocarPessoa(r, d), base)
+  return { cfg, doMes, automaticas, idas, mapa }
+}
+
+// A pessoa do mapa corresponde a um nome da folha de ordenados? (primeiro e último nome iguais;
+// "Joel Matias Santos Mendes" casa com "Joel Matias dos Santos Mendes" mas não com "Joelma …")
+export function mesmaPessoa(nomeFolha, nomeMapa) {
+  const t = n => normal(n).split(/[^a-z]+/).filter(Boolean)
+  const a = t(nomeFolha), b = t(nomeMapa)
+  if (!a.length || !b.length) return false
+  return a.includes(b[0]) && a.includes(b[b.length - 1])
 }
