@@ -27,6 +27,7 @@ const Conferencia = lazy(() => import('./pages/Conferencia'))
 const Utilizadores = lazy(() => import('./pages/Utilizadores'))
 const Configuracao = lazy(() => import('./pages/Configuracao'))
 const Ordenados = lazy(() => import('./pages/Ordenados'))
+const MapaKms = lazy(() => import('./pages/MapaKms'))
 const SalariosBanco = lazy(() => import('./pages/SalariosBanco'))
 const Perguntar = lazy(() => import('./pages/Perguntar'))
 
@@ -96,6 +97,7 @@ function Gate() {
             <Route path="caixas-rececao" element={<CaixasRececao />} />
             <Route path="conferencia" element={<Conferencia />} />
             <Route path="ordenados" element={<Ordenados />} />
+            <Route path="mapa-kms" element={<MapaKms />} />
             <Route path="salarios-banco" element={<SalariosBanco />} />
             <Route path="utilizadores" element={<Utilizadores />} />
             <Route path="configuracao" element={<Configuracao />} />
