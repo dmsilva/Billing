@@ -4,7 +4,7 @@ import { useData } from '../data/DataProvider'
 import { descarregar, XLSX_TYPE } from '../lib/ficheiros'
 import { nomeMes } from '../lib/ordenados'
 import { lerDatasMakro } from '../data/makroLeitura'
-import { CONFIG_PADRAO, diasDoMes, diasMakro, MAKRO_CONHECIDAS, gerarExcel, gerarMapa, gerarPdf, juntarConfig, nomeFicheiro, SEMANA, trocarPessoa } from '../lib/mapaKms'
+import { CONFIG_PADRAO, diasDoMes, idasDasFaturas, idasDeDias, juntarIdas, MAKRO_CONHECIDAS, gerarExcel, gerarMapa, gerarPdf, juntarConfig, nomeFicheiro, SEMANA, trocarPessoa } from '../lib/mapaKms'
 
 const CHAVE = 'faturaclaro-mapa-kms'
 const lerGuardado = () => { try { return JSON.parse(localStorage.getItem(CHAVE) || '{}') } catch { return {} } }
@@ -30,14 +30,20 @@ export default function MapaKms() {
   const chaveMes = `${ano}-${String(m).padStart(2, '0')}`
   const doMes = guardado.meses?.[chaveMes] || {}
   const variante = doMes.variante || 0
-  const extra = doMes.makroExtra || []
-  const tirar = doMes.makroTirar || []
+  // Dias juntados/tirados à mão (formato antigo: só Makro).
+  const extra = [...(doMes.idasExtra || []), ...(doMes.makroExtra || []).map(dia => ({ dia, loja: 'makro' }))]
+  const tirar = [...(doMes.idasTirar || []), ...(doMes.makroTirar || []).map(d => `${d}:makro`)]
   const [verDefs, setVerDefs] = useState(false)
   const [novaData, setNovaData] = useState('')
+  const [novaLoja, setNovaLoja] = useState('makro')
   const [busy, setBusy] = useState(false)
 
   const datasLidas = guardado.makroDatas
-  const makroFaturas = useMemo(() => [...new Set([...diasMakro(invoices, ano, m), ...diasDoMes(MAKRO_CONHECIDAS, ano, m), ...diasDoMes(datasLidas, ano, m)])].sort((a, b) => a - b), [invoices, ano, m, datasLidas])
+  const automaticas = useMemo(() => juntarIdas(
+    idasDasFaturas(invoices, ano, m, cfg.lojas),
+    idasDeDias(diasDoMes(MAKRO_CONHECIDAS, ano, m), 'makro'),
+    idasDeDias(diasDoMes(datasLidas, ano, m), 'makro'),
+  ), [invoices, ano, m, datasLidas, cfg.lojas])
   const [lendo, setLendo] = useState(false)
   async function lerPrint(files) {
     setLendo(true)
@@ -51,8 +57,14 @@ export default function MapaKms() {
     setMes(`${Number(primeira.slice(0, 4))}-${Number(primeira.slice(5, 7))}`)
     toast(`Li ${r.datas.length} datas da Makro: ${r.datas.map(d => `${d.slice(8, 10)}/${d.slice(5, 7)}`).join(', ')}.`)
   }
-  const makro = useMemo(() => [...new Set([...makroFaturas.filter(d => !tirar.includes(d)), ...extra])].sort((a, b) => a - b), [makroFaturas, extra, tirar])
-  const base = useMemo(() => gerarMapa({ ano, mes: m, makro, config: cfg, variante }), [ano, m, makro, cfg, variante])
+  const idas = useMemo(() => {
+    const r = juntarIdas(automaticas, ...extra.map(x => ({ [x.dia]: [x.loja] })))
+    for (const t of tirar) { const [d, k] = t.split(':'); if (r[d]) r[d] = r[d].filter(x => x !== k) }
+    return r
+  }, [automaticas, extra, tirar])
+  const listaIdas = Object.entries(idas).flatMap(([d, ks]) => ks.map(k => ({ dia: Number(d), loja: k }))).sort((a, b) => a.dia - b.dia)
+  const nomeLoja = k => cfg.lojas.find(l => l.chave === k)?.local || k
+  const base = useMemo(() => gerarMapa({ ano, mes: m, idas, config: cfg, variante }), [ano, m, idas, cfg, variante])
   const mapa = useMemo(() => (doMes.trocas || []).reduce((r, d) => trocarPessoa(r, d), base), [base, doMes.trocas])
 
   const mudarMes = alt => {
@@ -69,13 +81,21 @@ export default function MapaKms() {
     mudarMes({ trocas: [...t] })
   }
   const baralhar = () => mudarMes({ variante: variante + 1, trocas: [] })
-  function juntarMakro() {
+  function juntarIda() {
     if (!novaData.startsWith(`${chaveMes}-`)) return toast(`Escolhe um dia de ${nomeMes(ano, m)}.`, 'bad')
-    const d = Number(novaData.slice(8, 10))
-    mudarMes({ makroExtra: [...new Set([...extra, d])], makroTirar: tirar.filter(x => x !== d) })
+    const dia = Number(novaData.slice(8, 10))
+    const k = `${dia}:${novaLoja}`
+    mudarMes({ idasExtra: [...(doMes.idasExtra || []).filter(x => `${x.dia}:${x.loja}` !== k), { dia, loja: novaLoja }], idasTirar: (doMes.idasTirar || []).filter(x => x !== k), makroTirar: (doMes.makroTirar || []).filter(d => `${d}:makro` !== k) })
     setNovaData('')
   }
-  const tirarMakro = d => mudarMes({ makroExtra: extra.filter(x => x !== d), makroTirar: makroFaturas.includes(d) ? [...new Set([...tirar, d])] : tirar })
+  const tirarIda = (dia, loja) => {
+    const k = `${dia}:${loja}`
+    mudarMes({
+      idasExtra: (doMes.idasExtra || []).filter(x => `${x.dia}:${x.loja}` !== k),
+      makroExtra: (doMes.makroExtra || []).filter(d => `${d}:makro` !== k),
+      idasTirar: (automaticas[dia] || []).includes(loja) ? [...new Set([...(doMes.idasTirar || []), k])] : (doMes.idasTirar || []),
+    })
+  }
 
   async function baixar(tipo) {
     setBusy(true)
@@ -90,7 +110,7 @@ export default function MapaKms() {
 
   return (
     <>
-      <Panel title="Mapa de kms" hint="Compensação por deslocação em viatura própria. O mapa do mês é gerado sozinho: segunda a sábado ao Chalet do Lago, dois dias por semana a Ponte de Sor, e os dias com fatura da Makro. Cada dia é só de uma pessoa. Cada mês sai diferente."
+      <Panel title="Mapa de kms" hint="Compensação por deslocação em viatura própria. O mapa do mês é gerado sozinho: segunda a sábado ao Chalet do Lago, dois dias por semana a Ponte de Sor, e as idas às lojas (Makro, IKEA, Lidl, Leroy Merlin…) quando há fatura. Cada dia é só de uma pessoa. Cada mês sai diferente."
         actions={<>
           <button className="primary" disabled={busy} onClick={() => baixar('xlsx')}>Descarregar Excel</button>
           <button className="secondary" disabled={busy} onClick={() => baixar('pdf')}>Descarregar PDF</button>
@@ -103,21 +123,24 @@ export default function MapaKms() {
           <button className="link-btn" onClick={() => setVerDefs(v => !v)}>{verDefs ? 'Esconder definições' : 'Definições (km, preço, viaturas)'}</button>
         </div>
         <div className="notice">
-          <strong>Dias da Makro em {nomeMes(ano, m)}:</strong>{' '}
-          {makro.length ? makro.map(d => (
-            <span key={d} style={{ marginRight: 10, whiteSpace: 'nowrap' }}>
-              {semana(d)} {d}{extra.includes(d) && !makroFaturas.includes(d) ? ' (à mão)' : ''}{' '}
-              <button className="link-btn small" title="Tirar este dia da Makro" onClick={() => tirarMakro(d)}>×</button>
+          <strong>Idas às lojas em {nomeMes(ano, m)}:</strong>{' '}
+          {listaIdas.length ? listaIdas.map(x => (
+            <span key={`${x.dia}:${x.loja}`} style={{ marginRight: 10, whiteSpace: 'nowrap' }}>
+              {semana(x.dia)} {x.dia} {nomeLoja(x.loja)}{!(automaticas[x.dia] || []).includes(x.loja) ? ' (à mão)' : ''}{' '}
+              <button className="link-btn small" title="Tirar esta ida" onClick={() => tirarIda(x.dia, x.loja)}>×</button>
             </span>
-          )) : <span className="muted">nenhuma fatura da Makro registada neste mês. </span>}
+          )) : <span className="muted">nenhuma fatura das lojas registada neste mês. </span>}
           <span style={{ whiteSpace: 'nowrap' }}>
-            <input type="date" value={novaData} onChange={e => setNovaData(e.target.value)} aria-label="Dia da Makro a juntar" style={{ marginLeft: 6 }} />
-            <button className="secondary small" onClick={juntarMakro} disabled={!novaData}>Juntar dia</button>
+            <input type="date" value={novaData} onChange={e => setNovaData(e.target.value)} aria-label="Dia a juntar" style={{ marginLeft: 6 }} />
+            <select value={novaLoja} onChange={e => setNovaLoja(e.target.value)} aria-label="Loja">
+              {cfg.lojas.map(l => <option key={l.chave} value={l.chave}>{l.local}</option>)}
+            </select>
+            <button className="secondary small" onClick={juntarIda} disabled={!novaData}>Juntar ida</button>
           </span>
           <div style={{ marginTop: 6 }}>
             <label className="file-button"><input type="file" multiple accept="image/jpeg,image/png,image/webp,application/pdf" disabled={lendo} onChange={e => { if (e.target.files.length) lerPrint(e.target.files); e.target.value = '' }} />{lendo ? 'A ler as datas…' : 'Enviar print da lista de faturas da Makro'}</label>
           </div>
-          <div className="muted small">Envia o print da app da Makro (lista de faturas) e as datas entram sozinhas. Também contam as faturas com fornecedor "Makro" que já estão na app. Podes juntar ou tirar um dia à mão.</div>
+          <div className="muted small">Envia o print da app da Makro (lista de faturas) e as datas entram sozinhas. Também contam sozinhas as faturas na app de {cfg.lojas.map(l => l.local).join(', ')} (lojas e kms em Definições). Podes juntar ou tirar uma ida à mão.</div>
         </div>
         {(() => {
           const dif = Math.abs(mapa.recibos[0].total - mapa.recibos[1].total)
@@ -156,7 +179,7 @@ export default function MapaKms() {
 }
 
 function Definicoes({ cfg, setDestino, setPessoa, mudarConfig }) {
-  const nomes = { chalet: 'Chalet do Lago', ponteSor: 'Ponte de Sor', makro: 'Makro' }
+  const nomes = { chalet: 'Chalet do Lago', ponteSor: 'Ponte de Sor' }
   return (
     <div className="notice" style={{ display: 'grid', gap: 8 }}>
       <div className="actions">
@@ -165,7 +188,7 @@ function Definicoes({ cfg, setDestino, setPessoa, mudarConfig }) {
         <label>Assinado em <input value={cfg.localAssinatura} onChange={e => mudarConfig({ ...cfg, localAssinatura: e.target.value })} style={{ width: 110 }} /></label>
         <label>Diferença máx. (€) <input type="number" step="1" min="0" value={cfg.diferencaMaxima} onChange={e => mudarConfig({ ...cfg, diferencaMaxima: Number(e.target.value) || 0 })} style={{ width: 70 }} /></label>
         <label>€ por km <input type="number" step="0.01" min="0" value={cfg.precoKm} onChange={e => mudarConfig({ ...cfg, precoKm: Number(e.target.value) || 0 })} style={{ width: 80 }} /></label>
-        <label><input type="checkbox" checked={cfg.makroLinhaAParte} onChange={e => mudarConfig({ ...cfg, makroLinhaAParte: e.target.checked })} /> No dia da Makro também vão ao Chalet do Lago</label>
+        <label><input type="checkbox" checked={cfg.makroLinhaAParte} onChange={e => mudarConfig({ ...cfg, makroLinhaAParte: e.target.checked })} /> No dia das compras também vão ao Chalet do Lago</label>
       </div>
       {cfg.pessoas.map((p, i) => (
         <div className="actions" key={i}>
@@ -182,6 +205,20 @@ function Definicoes({ cfg, setDestino, setPessoa, mudarConfig }) {
           <label>Objetivo <input value={d.objetivo} onChange={e => setDestino(k, 'objetivo', e.target.value)} style={{ width: 100 }} /></label>
         </div>
       ))}
+      <strong>Lojas (a ida entra no mapa quando há fatura com esta palavra no fornecedor)</strong>
+      {cfg.lojas.map((l, i) => {
+        const setLoja = (campo, v) => mudarConfig({ ...cfg, lojas: cfg.lojas.map((x, k) => (k === i ? { ...x, [campo]: v } : x)) })
+        return (
+          <div className="actions" key={l.chave}>
+            <label>Loja <input value={l.local} onChange={e => setLoja('local', e.target.value)} style={{ width: 130 }} /></label>
+            <label>Palavra na fatura <input value={l.procura} onChange={e => setLoja('procura', e.target.value)} style={{ width: 100 }} /></label>
+            <label>Cidade <input value={l.cidade} onChange={e => setLoja('cidade', e.target.value)} style={{ width: 110 }} /></label>
+            <label>Kms (ida e volta) <input type="number" min="0" value={l.kms} onChange={e => setLoja('kms', Number(e.target.value) || 0)} style={{ width: 70 }} /></label>
+            <button className="link-btn small" onClick={() => mudarConfig({ ...cfg, lojas: cfg.lojas.filter((_, k) => k !== i) })}>Tirar</button>
+          </div>
+        )
+      })}
+      <div><button className="secondary small" onClick={() => mudarConfig({ ...cfg, lojas: [...cfg.lojas, { chave: `loja${Date.now()}`, procura: '', local: 'Nova loja', cidade: 'Lisboa', kms: 10, tempos: ['1 hora'], objetivo: 'Compras' }] })}>+ Juntar loja</button></div>
       <div><button className="link-btn" onClick={() => mudarConfig(CONFIG_PADRAO)}>Voltar às definições de origem</button></div>
     </div>
   )

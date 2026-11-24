@@ -23,8 +23,15 @@ export const CONFIG_PADRAO = {
   destinos: {
     chalet: { local: 'Unidade Chalet do Lago', cidade: 'Montargil', kms: 214, tempos: ['4 horas', '5 horas'], objetivo: 'Trabalho' },
     ponteSor: { local: 'Ponte de Sor', cidade: '', kms: 284, tempos: ['3 horas', '4 horas'], objetivo: 'Trabalho' },
-    makro: { local: 'Makro', cidade: 'Lisboa', kms: 20, tempos: ['1 hora', '1,5 horas', '2 horas'], objetivo: 'Compras' },
   },
+  // Lojas: quando há fatura de uma destas lojas na app, a ida entra no mapa (Daniel, 2026-11-24).
+  // `procura` = palavra que aparece no fornecedor da fatura. Kms = ida e volta desde Lisboa.
+  lojas: [
+    { chave: 'makro', procura: 'makro', local: 'Makro', cidade: 'Lisboa', kms: 20, tempos: ['1 hora', '1,5 horas', '2 horas'], objetivo: 'Compras' },
+    { chave: 'ikea', procura: 'ikea', local: 'IKEA', cidade: 'Alfragide', kms: 15, tempos: ['1 hora', '1,5 horas', '2 horas'], objetivo: 'Compras' },
+    { chave: 'lidl', procura: 'lidl', local: 'Lidl', cidade: 'Lisboa', kms: 10, tempos: ['1 hora'], objetivo: 'Compras' },
+    { chave: 'leroy', procura: 'leroy', local: 'Leroy Merlin', cidade: 'Telheiras', kms: 10, tempos: ['1 hora', '1,5 horas'], objetivo: 'Compras' },
+  ],
 }
 
 // Junta a configuração guardada com a padrão (campos novos ficam com o valor padrão).
@@ -32,7 +39,11 @@ export function juntarConfig(guardada) {
   const g = guardada && typeof guardada === 'object' ? guardada : {}
   const destinos = Object.fromEntries(Object.entries(CONFIG_PADRAO.destinos).map(([k, d]) => [k, { ...d, ...(g.destinos?.[k] || {}) }]))
   const pessoas = CONFIG_PADRAO.pessoas.map((p, i) => ({ ...p, ...(g.pessoas?.[i] || {}) }))
-  return { ...CONFIG_PADRAO, ...g, pessoas, destinos }
+  let lojas = Array.isArray(g.lojas) ? g.lojas : CONFIG_PADRAO.lojas.map(l => ({ ...l }))
+  // Configuração antiga: a Makro estava em destinos.makro.
+  if (!Array.isArray(g.lojas) && g.destinos?.makro) lojas = lojas.map(l => (l.chave === 'makro' ? { ...l, ...g.destinos.makro } : l))
+  lojas = lojas.map(l => ({ tempos: ['1 hora'], objetivo: 'Compras', ...l }))
+  return { ...CONFIG_PADRAO, ...g, pessoas, destinos, lojas }
 }
 
 // Gerador pseudo-aleatório com semente (o mesmo mês dá sempre o mesmo mapa).
@@ -97,32 +108,56 @@ export function datasMakroLidas(r) {
 // Dias do mês (números) a partir de uma lista de datas AAAA-MM-DD.
 export const diasDoMes = (datas, ano, mes) => [...new Set((datas || []).filter(d => d.startsWith(`${ano}-${pad(mes)}-`)).map(d => Number(d.slice(8, 10))))].sort((a, b) => a - b)
 
-const eMakro = f => /makro/i.test(String(f || ''))
+const normal = s => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
 
-// Datas (AAAA-MM-DD) do mês com fatura da Makro (várias faturas no mesmo dia = uma ida).
-export function diasMakro(faturas, ano, mes) {
+// Loja de uma fatura (pelo fornecedor ou descrição), ou null.
+export function lojaDaFatura(f, lojas) {
+  const texto = `${normal(f.fornecedor)} ${normal(f.descricao)}`
+  return lojas.find(l => l.procura && texto.includes(normal(l.procura))) || null
+}
+
+// Idas às lojas no mês: { dia: [chave da loja, …] } (várias faturas da mesma loja no mesmo dia = uma ida).
+export function idasDasFaturas(faturas, ano, mes, lojas = CONFIG_PADRAO.lojas) {
   const prefixo = `${ano}-${pad(mes)}-`
-  const dias = new Set()
+  const idas = {}
   for (const f of faturas || []) {
     if (f.estado === 'Rejeitada') continue
-    if (!eMakro(f.fornecedor) && !eMakro(f.descricao)) continue
     const data = String(f.data || '').slice(0, 10)
-    if (data.startsWith(prefixo)) dias.add(Number(data.slice(8, 10)))
+    if (!data.startsWith(prefixo)) continue
+    const loja = lojaDaFatura(f, lojas)
+    if (!loja) continue
+    const d = Number(data.slice(8, 10))
+    idas[d] = [...new Set([...(idas[d] || []), loja.chave])]
   }
-  return [...dias].sort((a, b) => a - b)
+  return idas
 }
+
+// Junta vários { dia: [lojas] }.
+export function juntarIdas(...listas) {
+  const r = {}
+  for (const l of listas) for (const [d, ks] of Object.entries(l || {})) r[d] = [...new Set([...(r[d] || []), ...ks])]
+  return r
+}
+export const idasDeDias = (dias, chave) => Object.fromEntries((dias || []).map(d => [d, [chave]]))
+
+// Datas (dias do mês) com fatura da Makro.
+export const diasMakro = (faturas, ano, mes) => Object.entries(idasDasFaturas(faturas, ano, mes)).filter(([, ks]) => ks.includes('makro')).map(([d]) => Number(d)).sort((a, b) => a - b)
 
 function linha(destino, rnd) {
   return { local: destino.local, cidade: destino.cidade, tempo: escolher(destino.tempos, rnd), objetivo: destino.objetivo, kms: Number(destino.kms) || 0 }
 }
 
-// Gera o mapa do mês. `makro` = dias do mês (números) em que houve Makro.
-export function gerarMapa({ ano, mes, makro = [], config = CONFIG_PADRAO, variante = 0 }) {
+// Gera o mapa do mês. `idas` = { dia: [chaves das lojas] }; `makro` = dias com Makro (atalho).
+export function gerarMapa({ ano, mes, idas = {}, makro = [], config = CONFIG_PADRAO, variante = 0 }) {
   const cfg = juntarConfig(config)
   const rnd = sorteio(`mapa-kms-${ano}-${mes}-${variante}`)
   const semanas = semanasDoMes(ano, mes)
   const uteis = semanas.flat()
-  const makroSet = new Set(makro.filter(d => uteis.includes(d) || diaSemana(ano, mes, d) === 0))
+  const total = new Date(Date.UTC(ano, mes, 0)).getUTCDate()
+  const todas = juntarIdas(idas, idasDeDias(makro, 'makro'))
+  const lojaPor = new Map(cfg.lojas.map(l => [l.chave, l]))
+  const idasDia = new Map(Object.entries(todas).map(([d, ks]) => [Number(d), ks.filter(k => lojaPor.has(k))]).filter(([d, ks]) => d >= 1 && d <= total && ks.length))
+  const makroSet = new Set(idasDia.keys())
 
   // Ponte de Sor: 2 dias por semana (1 se a semana do mês tiver menos de 3 dias), nunca em dia de Makro.
   const ponteSor = new Set()
@@ -150,7 +185,7 @@ export function gerarMapa({ ano, mes, makro = [], config = CONFIG_PADRAO, varian
     const linhas = []
     const domingo = diaSemana(ano, mes, dia) === 0
     if (makroSet.has(dia)) {
-      linhas.push(linha(cfg.destinos.makro, rnd))
+      for (const k of idasDia.get(dia)) linhas.push(linha(lojaPor.get(k), rnd))
       if (cfg.makroLinhaAParte && !domingo) linhas.push(linha(cfg.destinos.chalet, rnd))
     } else {
       linhas.push(linha(ponteSor.has(dia) ? cfg.destinos.ponteSor : cfg.destinos.chalet, rnd))
