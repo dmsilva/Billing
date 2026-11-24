@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import ExcelJS from 'exceljs'
-import { diasMakro, gerarExcel, gerarMapa, gerarPdf, semanasDoMes, trocarPessoa } from '../src/lib/mapaKms.js'
+import { diasMakro, gerarExcel, gerarMapa, gerarPdf, nomeFicheiro, semanasDoMes, trocarPessoa } from '../src/lib/mapaKms.js'
 
 const faturas = [
   { data: '2026-11-20', fornecedor: 'MAKRO Cash & Carry Portugal', estado: 'Validada' },
@@ -176,5 +176,24 @@ describe('assinaturas', () => {
   it('sem assinatura o PDF não leva imagens', async () => {
     const pdf = new Uint8Array(await gerarPdf(gerarMapa({ ano: 2026, mes: 11 })))
     expect(new TextDecoder('latin1').decode(pdf)).not.toContain('/Subtype /Image')
+  })
+})
+
+describe('um ficheiro por pessoa', () => {
+  const m = gerarMapa({ ano: 2026, mes: 11, makro: [3, 9] })
+  it('PDF e Excel só com o recibo de cada um', async () => {
+    for (const i of [0, 1]) {
+      const pdf = new TextDecoder('latin1').decode(new Uint8Array(await gerarPdf(m, i)))
+      expect(pdf.startsWith('%PDF')).toBe(true)
+      const wb = new ExcelJS.Workbook()
+      await wb.xlsx.load(await gerarExcel(m, i))
+      const ws = wb.worksheets[0]
+      const textos = []
+      ws.eachRow(r => r.eachCell(c => textos.push(String(c.value ?? ''))))
+      const nome = m.recibos[i].nome.toUpperCase(), outro = m.recibos[1 - i].nome.toUpperCase()
+      expect(textos.some(t => t.includes(nome))).toBe(true)
+      expect(textos.some(t => t.includes(outro))).toBe(false)
+    }
+    expect(nomeFicheiro(m, 1)).toBe('Mapa_de_Kms_Novembro_2026_Joel')
   })
 })

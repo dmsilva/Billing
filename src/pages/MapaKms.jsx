@@ -98,11 +98,11 @@ export default function MapaKms() {
     })
   }
 
-  async function baixar(tipo) {
+  async function baixar(tipo, pessoa) {
     setBusy(true)
     try {
-      if (tipo === 'pdf') descarregar(await gerarPdf(mapa), `${nomeFicheiro(mapa)}.pdf`, 'application/pdf')
-      else descarregar(await gerarExcel(mapa), `${nomeFicheiro(mapa)}.xlsx`, XLSX_TYPE)
+      if (tipo === 'pdf') descarregar(await gerarPdf(mapa, pessoa), `${nomeFicheiro(mapa, pessoa)}.pdf`, 'application/pdf')
+      else descarregar(await gerarExcel(mapa, pessoa), `${nomeFicheiro(mapa, pessoa)}.xlsx`, XLSX_TYPE)
     } catch (e) { toast(e.message, 'bad') }
     setBusy(false)
   }
@@ -113,8 +113,10 @@ export default function MapaKms() {
     <>
       <Panel title="Mapa de kms" hint="Compensação por deslocação em viatura própria. O mapa do mês é gerado sozinho: segunda a sábado ao Chalet do Lago, dois dias por semana a Ponte de Sor, e as idas às lojas (Makro, IKEA, Lidl, Leroy Merlin…) quando há fatura. Cada dia é só de uma pessoa. Cada mês sai diferente."
         actions={<>
-          <button className="primary" disabled={busy} onClick={() => baixar('xlsx')}>Descarregar Excel</button>
-          <button className="secondary" disabled={busy} onClick={() => baixar('pdf')}>Descarregar PDF</button>
+          {mapa.recibos.map((r, i) => (
+            <button key={i} className="primary" disabled={busy} onClick={() => baixar('pdf', i)}>PDF {r.nome.split(' ')[0]}</button>
+          ))}
+          <button className="secondary" disabled={busy} onClick={() => baixar('xlsx')}>Excel (os dois)</button>
         </>}>
         <div className="actions">
           <select value={mes} onChange={e => setMes(e.target.value)} aria-label="Mês">
@@ -152,7 +154,7 @@ export default function MapaKms() {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 16, marginTop: 12 }}>
           {mapa.recibos.map((rec, i) => (
             <div key={i}>
-              <h3 style={{ margin: '4px 0' }}>{rec.nome} <span className="muted small">· {rec.viatura} · {rec.dias} dias{rec.assinatura?.src ? ' · assinado' : ' · sem assinatura (põe em Definições)'}</span></h3>
+              <h3 style={{ margin: '4px 0' }}>{rec.nome} <button className="link-btn small" disabled={busy} onClick={() => baixar('pdf', i)}>PDF</button> <button className="link-btn small" disabled={busy} onClick={() => baixar('xlsx', i)}>Excel</button> <span className="muted small">· {rec.viatura} · {rec.dias} dias{rec.assinatura?.src ? ' · assinado' : ' · sem assinatura (põe em Definições)'}</span></h3>
               <div className="tablewrap"><table className="mini-table">
                 <thead><tr><th>Dia</th><th>Local de destino</th><th>Tempo</th><th>Objetivo</th><th className="money">Kms</th><th /></tr></thead>
                 <tbody>{rec.linhas.length ? rec.linhas.map((l, k) => (
