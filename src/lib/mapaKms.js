@@ -15,10 +15,10 @@ export const CONFIG_PADRAO = {
   precoKm: 0.4,
   ponteSorPorSemana: 2,
   makroLinhaAParte: true,
-  makroPessoa: 1, // as idas à Makro são sempre do Joel (Daniel, 2026-11-24)
+  diferencaMaxima: 50, // € entre o que cada um recebe (Daniel, 2026-11-24)
   pessoas: [
     { nome: 'Patricia Jesus Pereira', viatura: 'AG-44-IG' },
-    { nome: 'Joel Matias Santos Mendes', viatura: '10-HD-47' },
+    { nome: 'Joel Matias Santos Mendes', viatura: 'AR-65-LL' },
   ],
   destinos: {
     chalet: { local: 'Unidade Chalet do Lago', cidade: 'Montargil', kms: 214, tempos: ['4 horas', '5 horas'], objetivo: 'Trabalho' },
@@ -122,13 +122,9 @@ export function gerarMapa({ ano, mes, makro = [], config = CONFIG_PADRAO, varian
 
   // Todos os dias (seg–sáb, e domingos com Makro) repartidos entre os dois, metade para cada.
   const dias = [...new Set([...uteis, ...makroSet])].sort((a, b) => a - b)
-  // Os dias da Makro são sempre da mesma pessoa (o Joel); os restantes completam metade para cada.
-  const mp = cfg.makroPessoa === 0 ? 0 : 1
-  const dono = new Map([...makroSet].map(d => [d, mp]))
-  const resto = baralhar(dias.filter(d => !makroSet.has(d)), rnd)
-  const metade = rnd() < 0.5 ? Math.ceil(dias.length / 2) : Math.floor(dias.length / 2)
-  const faltamOutro = Math.min(resto.length, metade)
-  resto.forEach((d, i) => dono.set(d, i < faltamOutro ? 1 - mp : mp))
+  const ordem = baralhar(dias, rnd)
+  const primeiroFica = rnd() < 0.5 ? Math.ceil(dias.length / 2) : Math.floor(dias.length / 2)
+  const dono = new Map(ordem.map((d, i) => [d, i < primeiroFica ? 0 : 1]))
 
   const registos = dias.map(dia => {
     const linhas = []
@@ -141,7 +137,41 @@ export function gerarMapa({ ano, mes, makro = [], config = CONFIG_PADRAO, varian
     }
     return { dia, pessoa: dono.get(dia), linhas }
   })
-  return montar({ ano, mes, cfg, registos, variante })
+  return montar({ ano, mes, cfg, registos: equilibrar(registos, cfg, rnd), variante })
+}
+
+const kmsDia = r => r.linhas.reduce((s, l) => s + (Number(l.kms) || 0), 0)
+
+// Troca dias entre os dois até a diferença do que cada um recebe ficar dentro do limite
+// (por defeito 50 €), mantendo o número de dias de cada um igual (±1).
+export function equilibrar(registos, cfg, rnd = Math.random) {
+  const regs = registos.map(r => ({ ...r }))
+  const limiteKm = (Number(cfg.diferencaMaxima) || 0) / (Number(cfg.precoKm) || 1)
+  const soma = i => regs.filter(r => r.pessoa === i).reduce((s, r) => s + kmsDia(r), 0)
+  const conta = i => regs.filter(r => r.pessoa === i).length
+  for (let volta = 0; volta < 60; volta++) {
+    const dif = soma(0) - soma(1)
+    if (Math.abs(dif) <= limiteKm) break
+    const cands = []
+    const a = regs.filter(r => r.pessoa === 0), b = regs.filter(r => r.pessoa === 1)
+    for (const x of a) for (const y of b) {
+      const nova = dif - 2 * (kmsDia(x) - kmsDia(y))
+      if (Math.abs(nova) < Math.abs(dif)) cands.push({ mover: [x, y], nova })
+    }
+    // Passar um dia só de um para o outro, se o número de dias continuar equilibrado.
+    const dc = conta(0) - conta(1)
+    for (const x of regs) {
+      const dcNovo = dc + (x.pessoa === 0 ? -2 : 2)
+      if (Math.abs(dcNovo) > 1) continue
+      const nova = dif + (x.pessoa === 0 ? -2 : 2) * kmsDia(x)
+      if (Math.abs(nova) < Math.abs(dif)) cands.push({ mover: [x], nova })
+    }
+    if (!cands.length) break
+    const bons = cands.filter(c => Math.abs(c.nova) <= limiteKm)
+    const escolha = bons.length ? bons[Math.floor(rnd() * bons.length)] : cands.reduce((m, c) => (Math.abs(c.nova) < Math.abs(m.nova) ? c : m))
+    for (const r of escolha.mover) r.pessoa = 1 - r.pessoa
+  }
+  return regs
 }
 
 // Recalcula os recibos a partir dos registos (usado também depois de trocar um dia de pessoa).
