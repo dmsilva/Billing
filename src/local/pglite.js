@@ -14,12 +14,13 @@ import regrasSql from '../../supabase/14_regras_fornecedor.sql?raw'
 import caixasAppSql from '../../supabase/15_caixas_app.sql?raw'
 import airbnbSql from '../../supabase/17_pagamento_airbnb.sql?raw'
 import notasCreditoSql from '../../supabase/18_notas_credito.sql?raw'
+import dividasSql from '../../supabase/19_dividas_colaboradores.sql?raw'
 import grantsSql from '../../supabase/test/01_grants.sql?raw'
 import seedSql from '../../supabase/03_seed_legacy.sql?raw'
 
 export { PGlite } from '@electric-sql/pglite'
 export { pgcrypto } from '@electric-sql/pglite/contrib/pgcrypto'
-export const SETUP_SQL = [stubSql, schemaSql, policiesSql, paymentsSql, creditsSql, encargosSql, salariosSql, ordenadosSql, artigosSql, emailSql, emailDetalheSql, regrasSql, caixasAppSql, airbnbSql, notasCreditoSql, grantsSql, seedSql]
+export const SETUP_SQL = [stubSql, schemaSql, policiesSql, paymentsSql, creditsSql, encargosSql, salariosSql, ordenadosSql, artigosSql, emailSql, emailDetalheSql, regrasSql, caixasAppSql, airbnbSql, notasCreditoSql, dividasSql, grantsSql, seedSql]
 // Bases locais criadas antes das faturas por pagar recebem só esta atualização.
 export const PAYMENTS_UPDATE_SQL = [paymentsSql, grantsSql]
 // Bases locais criadas antes das entradas do extrato recebem só esta atualização.
@@ -38,3 +39,5 @@ export const EMAIL_UPDATE_SQL = [emailSql, emailDetalheSql, grantsSql]
 export const REGRAS_UPDATE_SQL = [regrasSql, grantsSql]
 // Bases locais criadas antes das caixas da app da receção recebem só esta atualização.
 export const CAIXAS_APP_UPDATE_SQL = [caixasAppSql, grantsSql]
+// Bases locais criadas antes das dívidas dos colaboradores recebem só esta atualização.
+export const DIVIDAS_UPDATE_SQL = [dividasSql, grantsSql]
