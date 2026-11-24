@@ -49,6 +49,7 @@ export const PAGES = [
   { label: 'Ordenados', icon: '☷', title: 'Ordenados', tabs: [
     { path: '/ordenados', label: 'Para a contabilidade', sub: 'Folha para a contabilidade a partir do horário' },
     { path: '/salarios-banco', label: 'Ficheiro para o banco', sub: 'Recibos do contabilista → ficheiro de salários para a CGD' },
+    { path: '/mapa-kms', label: 'Mapa de kms', sub: 'Deslocações em viatura própria da Patrícia e do Joel · gerado todos os meses' },
   ] },
   { label: 'Definições', icon: '⛁', title: 'Definições', tabs: [
     { path: '/utilizadores', label: 'Utilizadores', sub: 'Acessos da administradora e da receção' },
@@ -69,7 +70,7 @@ export function pageFor(pathname) {
 
 // Páginas onde se importam outros ficheiros (extratos, caixas, recibos) ou se anexa a uma fatura existente:
 // aí largar um ficheiro não cria uma fatura nova.
-const NO_GLOBAL_DROP = ['/movimentos', '/entradas', '/caixa', '/caixas-rececao', '/ordenados', '/salarios-banco', '/configuracao', '/faturas/']
+const NO_GLOBAL_DROP = ['/movimentos', '/entradas', '/caixa', '/caixas-rececao', '/ordenados', '/salarios-banco', '/mapa-kms', '/configuracao', '/faturas/']
 
 function LocalBanner() {
   async function reset() {
