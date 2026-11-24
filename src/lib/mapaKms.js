@@ -15,6 +15,7 @@ export const CONFIG_PADRAO = {
   precoKm: 0.4,
   ponteSorPorSemana: 2,
   makroLinhaAParte: true,
+  makroPessoa: 1, // as idas à Makro são sempre do Joel (Daniel, 2026-11-24)
   pessoas: [
     { nome: 'Patricia Jesus Pereira', viatura: 'AG-44-IG' },
     { nome: 'Joel Matias Santos Mendes', viatura: '10-HD-47' },
@@ -121,9 +122,13 @@ export function gerarMapa({ ano, mes, makro = [], config = CONFIG_PADRAO, varian
 
   // Todos os dias (seg–sáb, e domingos com Makro) repartidos entre os dois, metade para cada.
   const dias = [...new Set([...uteis, ...makroSet])].sort((a, b) => a - b)
-  const ordem = baralhar(dias, rnd)
-  const primeiroFica = rnd() < 0.5 ? Math.ceil(dias.length / 2) : Math.floor(dias.length / 2)
-  const dono = new Map(ordem.map((d, i) => [d, i < primeiroFica ? 0 : 1]))
+  // Os dias da Makro são sempre da mesma pessoa (o Joel); os restantes completam metade para cada.
+  const mp = cfg.makroPessoa === 0 ? 0 : 1
+  const dono = new Map([...makroSet].map(d => [d, mp]))
+  const resto = baralhar(dias.filter(d => !makroSet.has(d)), rnd)
+  const metade = rnd() < 0.5 ? Math.ceil(dias.length / 2) : Math.floor(dias.length / 2)
+  const faltamOutro = Math.min(resto.length, metade)
+  resto.forEach((d, i) => dono.set(d, i < faltamOutro ? 1 - mp : mp))
 
   const registos = dias.map(dia => {
     const linhas = []

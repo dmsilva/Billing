@@ -49,6 +49,13 @@ describe('mapa de kms', () => {
     for (const d of [3, 9, 13, 20]) expect(linhas.filter(l => l.dia === d && l.local.includes('Chalet'))).toHaveLength(1)
   })
 
+  it('as idas à Makro são todas do Joel', () => {
+    const joel = mapa.recibos[1]
+    expect(joel.nome).toMatch(/Joel/)
+    expect(joel.linhas.filter(l => l.local === 'Makro').map(l => l.dia)).toEqual([3, 9, 13, 20])
+    expect(mapa.recibos[0].linhas.some(l => l.local === 'Makro')).toBe(false)
+  })
+
   it('totais a 0,40 €/km', () => {
     for (const r of mapa.recibos) {
       expect(r.totalKms).toBe(r.linhas.reduce((s, l) => s + l.kms, 0))
