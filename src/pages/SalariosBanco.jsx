@@ -5,6 +5,7 @@ import { aPagar, casarFolhaBanco, conferirRecibos, gerarFolhaBanco, lerRecibos, 
 import { euro, parseMoney, sum } from '../lib/money'
 import { supabase } from '../supabase'
 import { dataHora, deBase64, descarregar, paraBase64, XLSX_TYPE } from '../lib/ficheiros'
+import { aplicarDescontos, descontosDoMes, idsDescontados, TABELA_DIVIDAS, TIPOS } from '../lib/dividas'
 
 const TSV_TYPE = 'text/tab-separated-values;charset=utf-8'
 const HISTORICO = 'salarios_banco_envios'
@@ -12,6 +13,13 @@ const HISTORICO = 'salarios_banco_envios'
 const nomeDoMes = mes => MESES[mes - 1][0].toUpperCase() + MESES[mes - 1].slice(1)
 const textoValor = v => (v == null ? '' : v.toFixed(2).replace('.', ','))
 const mesIso = (ano, mes) => `${ano}-${String(mes).padStart(2, '0')}`
+
+// Adiantamentos e descontos ainda por fazer (página Dívidas e adiantamentos). Sem a tabela, não há descontos.
+async function carregarDescontos(mes) {
+  const { data, error } = await supabase.from(TABELA_DIVIDAS).select('*').is('descontado_em', null).not('descontar_mes', 'is', null)
+  return error ? [] : descontosDoMes(data || [], mes)
+}
+const rotuloDesconto = d => `${d.tipo === 'adiantamento' ? TIPOS.adiantamento : 'Desconto da dívida'}${d.descricao ? ` (${d.descricao})` : ''}`
 
 export default function SalariosBanco() {
   const toast = useToast()
@@ -23,6 +31,7 @@ export default function SalariosBanco() {
   const [pagamentos, setPagamentos] = useState([])
   const [conferencia, setConferencia] = useState(null)
   const [guardado, setGuardado] = useState(null)
+  const [descontosSemPessoa, setDescontosSemPessoa] = useState([])
   const [busy, setBusy] = useState(false)
 
   useEffect(() => {
@@ -38,11 +47,14 @@ export default function SalariosBanco() {
     if (!lidos?.mes || !ordenados) return
     let ativo = true
     ordenados.arrayBuffer()
-      .then(async buffer => ({ buffer, ...(await casarFolhaBanco(buffer, lidos.recibos)) }))
+      .then(async buffer => ({ buffer, ...(await casarFolhaBanco(buffer, lidos.recibos)), descontos: await carregarDescontos(mesIso(lidos.ano, lidos.mes)) }))
       .then(c => {
         if (!ativo) return
+        // Adiantamentos de salário e descontos da dívida já saem do valor a transferir.
+        const d = aplicarDescontos(c.pagamentos, c.descontos)
         setCasado(c)
-        setPagamentos(c.pagamentos.map(p => ({ ...p, valorTexto: textoValor(p.valor) })))
+        setDescontosSemPessoa(d.semPessoa)
+        setPagamentos(d.pagamentos.map(p => ({ ...p, valorTexto: textoValor(p.valor) })))
         setGuardado(null)
       })
       .catch(e => { if (ativo) { setCasado(null); toast(e.message, 'bad') } })
@@ -57,6 +69,12 @@ export default function SalariosBanco() {
       .catch(e => { if (ativo) { setConferencia(null); toast(e.message, 'bad') } })
     return () => { ativo = false }
   }, [lidos, ordenados, horario, toast])
+
+  // Não descontar agora: volta ao valor do recibo e o desconto fica para o próximo ficheiro.
+  function semDesconto(i) {
+    const p = pagamentos[i]
+    editar(i, { valor: p.original, valorTexto: textoValor(p.original), descontos: [], original: undefined })
+  }
 
   function editar(i, alteracao) {
     setPagamentos(ps => ps.map((p, k) => (k === i ? { ...p, ...alteracao } : p)))
@@ -89,6 +107,11 @@ export default function SalariosBanco() {
         }).select('id').single()
         if (error) toast(`O ficheiro foi gerado mas não ficou no histórico: ${error.message}`, 'bad')
         else { setGuardado(data.id); window.dispatchEvent(new Event('salarios-historico')) }
+        const ids = idsDescontados(pagamentos)
+        if (ids.length) {
+          const { error: e2 } = await supabase.from(TABELA_DIVIDAS).update({ descontado_em: new Date().toISOString(), descontado_envio: data?.id ?? null }).in('id', ids)
+          if (e2) toast(`Não consegui marcar os adiantamentos como descontados: ${e2.message}`, 'bad')
+        }
       }
       if (tipo === 'tsv') descarregar(tsv, `${base}.tsv`, TSV_TYPE)
       else descarregar(excel, `${base}.xlsx`, XLSX_TYPE)
@@ -117,6 +140,8 @@ export default function SalariosBanco() {
           {conferencia && (comProblemas.length
             ? <div className="notice bad">O contabilista não bate certo em {comProblemas.length === 1 ? '1 pessoa' : `${comProblemas.length} pessoas`}: {comProblemas.map(l => l.linha.nome).join(', ')}.</div>
             : <div className="notice ok">Os recibos deste PDF batem certo com o horário: feriados, noites, faltas e vencimentos.</div>)}
+          {pagamentos.some(p => p.descontos?.length) && <div className="notice warn">Descontos internos (não aparecem na contabilidade): {pagamentos.filter(p => p.descontos?.length).map(p => `${p.nome} −${euro(sum(p.descontos.map(d => d.valor)))}`).join(', ')}. Ao descarregar o ficheiro ficam marcados como descontados.</div>}
+          {descontosSemPessoa.length > 0 && <div className="notice bad">Por descontar, mas a pessoa não está na folha Ordenados_Chalet: {descontosSemPessoa.map(d => `${d.pessoa} ${euro(d.valor)}`).join(', ')}. Desconta à mão ou marca como descontado em Ordenados → Dívidas e adiantamentos.</div>}
           {guardado && <div className="notice ok">Guardado no histórico.</div>}
           <div className="tablewrap"><table className="mini-table">
             <thead><tr><th>Pagar</th><th>Nome</th><th className="money">Valor a pagar</th>{conferencia && <th>Conferência</th>}</tr></thead>
@@ -125,7 +150,13 @@ export default function SalariosBanco() {
               return (
                 <tr key={p.linha} className={p.incluir ? '' : 'row-muted'}>
                   <td><input type="checkbox" checked={p.incluir} onChange={e => editar(i, { incluir: e.target.checked })} aria-label={`Pagar a ${p.nome}`} /></td>
-                  <td>{p.nome}{!p.recibo && <span className="muted small"> · sem recibo neste PDF</span>}</td>
+                  <td>{p.nome}{!p.recibo && <span className="muted small"> · sem recibo neste PDF</span>}
+                    {p.descontos?.length > 0 && <small className="warn">
+                      Recibo {euro(p.original)} · {p.descontos.map(d => `−${euro(d.valor)} ${rotuloDesconto(d)}`).join(' · ')}
+                      {p.valor != null && p.valor <= 0 && <strong> · o desconto é maior do que o salário</strong>}
+                      {' '}<button className="link-btn" onClick={() => semDesconto(i)}>não descontar agora</button>
+                    </small>}
+                  </td>
                   <td className="money"><input className="money-input" inputMode="decimal" value={p.valorTexto} placeholder="0,00" aria-label={`Valor de ${p.nome}`}
                     onChange={e => { const t = e.target.value; const v = parseMoney(t); editar(i, { valorTexto: t, valor: v, incluir: t.trim() ? (p.incluir || v != null) : false }) }} /></td>
                   {conferencia && <td className={problemas.length ? 'bad' : 'ok'}>{p.recibo ? (problemas.length ? problemas.join(' ') : 'Certo') : ''}</td>}

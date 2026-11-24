@@ -50,6 +50,7 @@ export const PAGES = [
     { path: '/ordenados', label: 'Para a contabilidade', sub: 'Folha para a contabilidade a partir do horário' },
     { path: '/salarios-banco', label: 'Ficheiro para o banco', sub: 'Recibos do contabilista → ficheiro de salários para a CGD' },
     { path: '/mapa-kms', label: 'Mapa de kms', sub: 'Deslocações em viatura própria da Patrícia e do Joel · gerado todos os meses' },
+    { path: '/dividas', label: 'Dívidas e adiantamentos', sub: 'Só para nós · dívidas dos colaboradores, horas extra e adiantamentos de salário' },
   ] },
   { label: 'Definições', icon: '⛁', title: 'Definições', tabs: [
     { path: '/utilizadores', label: 'Utilizadores', sub: 'Acessos da administradora e da receção' },
