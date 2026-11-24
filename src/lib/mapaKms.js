@@ -412,3 +412,37 @@ export async function gerarPdf(mapa, pessoa) {
   })
   return doc.output('arraybuffer')
 }
+
+// ---------- Estado guardado no navegador (página Mapa de kms) ----------
+export const CHAVE_GUARDADO = 'faturaclaro-mapa-kms'
+export function lerGuardado(storage = globalThis.localStorage) {
+  try { return JSON.parse(storage?.getItem(CHAVE_GUARDADO) || '{}') || {} } catch { return {} }
+}
+
+// O mapa do mês tal como aparece na página: faturas das lojas + datas da Makro + idas à mão + trocas.
+export function calcularMapa({ invoices, ano, mes, guardado = {} }) {
+  const cfg = juntarConfig(guardado.config)
+  const doMes = guardado.meses?.[`${ano}-${pad(mes)}`] || {}
+  const automaticas = juntarIdas(
+    idasDasFaturas(invoices, ano, mes, cfg.lojas),
+    idasDeDias(diasDoMes(MAKRO_CONHECIDAS, ano, mes), 'makro'),
+    idasDeDias(diasDoMes(guardado.makroDatas, ano, mes), 'makro'),
+  )
+  // Idas juntadas/tiradas à mão (formato antigo: só Makro).
+  const extra = [...(doMes.idasExtra || []), ...(doMes.makroExtra || []).map(dia => ({ dia, loja: 'makro' }))]
+  const tirar = [...(doMes.idasTirar || []), ...(doMes.makroTirar || []).map(d => `${d}:makro`)]
+  const idas = juntarIdas(automaticas, ...extra.map(x => ({ [x.dia]: [x.loja] })))
+  for (const t of tirar) { const [d, k] = t.split(':'); if (idas[d]) idas[d] = idas[d].filter(x => x !== k) }
+  const base = gerarMapa({ ano, mes, idas, config: cfg, variante: doMes.variante || 0 })
+  const mapa = (doMes.trocas || []).reduce((r, d) => trocarPessoa(r, d), base)
+  return { cfg, doMes, automaticas, idas, mapa }
+}
+
+// A pessoa do mapa corresponde a um nome da folha de ordenados? (primeiro e último nome iguais;
+// "Joel Matias Santos Mendes" casa com "Joel Matias dos Santos Mendes" mas não com "Joelma …")
+export function mesmaPessoa(nomeFolha, nomeMapa) {
+  const t = n => normal(n).split(/[^a-z]+/).filter(Boolean)
+  const a = t(nomeFolha), b = t(nomeMapa)
+  if (!a.length || !b.length) return false
+  return a.includes(b[0]) && a.includes(b[b.length - 1])
+}

@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Empty, Panel, useToast } from '../components/ui'
-import { corrigir, gerarExcel, gerarPdf, lerMesesDoFicheiro, lerOrdenados, nomeMes, qtd, qtdHorario } from '../lib/ordenados'
+import { corrigir, gerarExcel, gerarPdf, juntarAjudasCusto, lerMesesDoFicheiro, lerOrdenados, nomeMes, qtd, qtdHorario } from '../lib/ordenados'
+import { calcularMapa, lerGuardado, mesmaPessoa } from '../lib/mapaKms'
+import { useData } from '../data/DataProvider'
 import { dataHora, deBase64, descarregar, paraBase64, XLSX_TYPE } from '../lib/ficheiros'
 import { supabase } from '../supabase'
 import { ePdf } from '../lib/horarioPdf'
@@ -81,6 +83,21 @@ export default function Ordenados() {
     return () => { ativo = false }
   }, [horario, ordenados, mes, toast])
 
+  // Ajudas de custo da Patrícia e do Joel = total a receber do mapa de kms do mesmo mês.
+  const { invoices } = useData()
+  const anoMes = dados ? `${dados.ano}-${dados.mes}` : ''
+  useEffect(() => {
+    if (!anoMes) return
+    const [a, mm] = anoMes.split('-').map(Number)
+    const { mapa } = calcularMapa({ invoices, ano: a, mes: mm, guardado: lerGuardado() })
+    setDados(d => (d ? { ...d, linhas: juntarAjudasCusto(d.linhas, mapa.recibos, mesmaPessoa) } : d))
+  }, [anoMes, invoices])
+  const setAjuda = (i, texto) => setDados(d => ({ ...d, linhas: d.linhas.map((l, k) => {
+    if (k !== i) return l
+    if (String(texto).trim() === '') return { ...l, ajudCusto: l.ajudCustoDoMapa ?? null, ajudCustoMao: false }
+    return { ...l, ajudCusto: Math.max(0, Number(String(texto).replace(',', '.')) || 0), ajudCustoMao: true }
+  }) }))
+
   // Qualquer mudança (outro mês, outra nota) dá um ficheiro novo no histórico.
   useEffect(() => { setGuardado(null) }, [dados])
 
@@ -96,7 +113,7 @@ export default function Ordenados() {
         const { data, error } = await supabase.from(HISTORICO).insert({
           mes: `${dados.ano}-${String(dados.mes).padStart(2, '0')}`,
           nome_ficheiro: base,
-          linhas: dados.linhas.map(l => ({ codigo: l.codigo, nome: l.nome, feriados: qtd(l, 'feriados'), noites: qtd(l, 'noites'), ferias: qtd(l, 'ferias'), faltas: qtd(l, 'faltas'), nota: l.nota, ...(l.corrigido && Object.keys(l.corrigido).length ? { corrigido: l.corrigido } : {}) })),
+          linhas: dados.linhas.map(l => ({ codigo: l.codigo, nome: l.nome, feriados: qtd(l, 'feriados'), noites: qtd(l, 'noites'), ferias: qtd(l, 'ferias'), faltas: qtd(l, 'faltas'), ...(l.ajudCusto ? { ajudCusto: l.ajudCusto } : {}), nota: l.nota, ...(l.corrigido && Object.keys(l.corrigido).length ? { corrigido: l.corrigido } : {}) })),
           excel_base64: paraBase64(excel),
           pdf_base64: paraBase64(pdf),
         }).select('id').single()
@@ -111,7 +128,7 @@ export default function Ordenados() {
 
   return (
     <>
-      <Panel title="Ordenados para a contabilidade" hint="Envia o horário dos funcionários (Excel ou PDF) e o Excel dos ordenados. Contamos os feriados trabalhados, as noites (23h às 7h) e os dias de férias (azul). Escreve as notas que quiseres e descarrega em Excel ou PDF.">
+      <Panel title="Ordenados para a contabilidade" hint="Envia o horário dos funcionários (Excel ou PDF) e o Excel dos ordenados. Contamos os feriados trabalhados, as noites (23h às 7h) e os dias de férias (azul). As ajudas de custo da Patrícia e do Joel vêm do mapa de kms do mês. Escreve as notas que quiseres e descarrega em Excel ou PDF.">
         <div className="actions">
           <label className="file-button"><input type="file" accept=".xlsx,.pdf,application/pdf" disabled={busy} onChange={e => { if (e.target.files[0]) escolherHorario(e.target.files[0]); e.target.value = '' }} />{horario ? `Horário: ${horario.name}` : '1. Escolher o horário (Funcionários)'}</label>
           <label className="file-button"><input type="file" accept=".xlsx" onChange={e => { if (e.target.files[0]) { setOrdenados(e.target.files[0]); setDados(null) } }} />{ordenados ? `Ordenados: ${ordenados.name}` : '2. Escolher o Excel dos ordenados'}</label>
@@ -137,7 +154,7 @@ export default function Ordenados() {
           {horario && ePdf(horario) && <div className="notice">Horário lido automaticamente do PDF: confere os números antes de enviar à contabilidade.</div>}
           {guardado && <div className="notice ok">Guardado no histórico.</div>}
           <div className="tablewrap"><table className="mini-table">
-            <thead><tr><th>Código</th><th>Nome</th><th className="money">Feriados</th><th className="money">Noites</th><th className="money">Férias</th><th>Faltas justificadas</th><th>Notas</th></tr></thead>
+            <thead><tr><th>Código</th><th>Nome</th><th className="money">Feriados</th><th className="money">Noites</th><th className="money">Férias</th><th>Faltas justificadas</th><th className="money" title="Kms do mapa de kms (Patrícia e Joel)">Ajud. custo (kms)</th><th>Notas</th></tr></thead>
             <tbody>{dados.linhas.length ? dados.linhas.map((l, i) => (
               <tr key={`${l.codigo}-${l.nome}`} className={l.noHorario ? '' : 'row-muted'}>
                 <td>{l.codigo ?? ''}</td>
@@ -146,9 +163,19 @@ export default function Ordenados() {
                 <td className="money"><Corrigivel linha={l} campo="noites" rotulo="Noites" onChange={v => setNumero(i, 'noites', v)} /></td>
                 <td className="money"><Corrigivel linha={l} campo="ferias" rotulo="Férias" onChange={v => setNumero(i, 'ferias', v)} /></td>
                 <td><Corrigivel linha={l} campo="faltas" rotulo="Faltas justificadas" onChange={v => setNumero(i, 'faltas', v)} />{l.faltas.length > 0 && l.corrigido?.faltas === undefined && <span className="muted small"> dia {resumoDias(l.faltas)}</span>}</td>
+                <td className="money">
+                  {(l.ajudCustoDoMapa !== undefined || l.ajudCustoMao) ? (
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                      <input type="number" min="0" step="0.01" className="cell" value={l.ajudCusto ?? ''} placeholder="0" onChange={e => setAjuda(i, e.target.value)} aria-label={`Ajudas de custo de ${l.nome}`}
+                        title={l.ajudCustoMao ? `Escrito à mão. No mapa de kms: ${l.ajudCustoDoMapa ?? 0} €` : 'Do mapa de kms deste mês'}
+                        style={{ width: 90, textAlign: 'right', ...(l.ajudCustoMao ? { background: '#fff6d6', borderColor: '#f0d995', fontWeight: 700 } : {}) }} />
+                      {l.ajudCustoMao && <button type="button" className="link-btn small" title="Voltar ao valor do mapa de kms" onClick={() => setAjuda(i, '')}>↺</button>}
+                    </span>
+                  ) : ''}
+                </td>
                 <td><input value={l.nota} onChange={e => setNota(i, e.target.value)} placeholder="Sem notas" aria-label={`Notas de ${l.nome}`} style={{ width: '100%', minWidth: 220 }} /></td>
               </tr>
-            )) : <Empty colSpan={7}>A folha da contabilidade não tem funcionários.</Empty>}</tbody>
+            )) : <Empty colSpan={8}>A folha da contabilidade não tem funcionários.</Empty>}</tbody>
           </table></div>
         </Panel>
       )}

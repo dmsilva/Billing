@@ -5,11 +5,9 @@ import { descarregar, XLSX_TYPE } from '../lib/ficheiros'
 import { nomeMes } from '../lib/ordenados'
 import { lerDatasMakro } from '../data/makroLeitura'
 import { AssinaturaEditor } from '../components/Assinatura'
-import { CONFIG_PADRAO, diasDoMes, idasDasFaturas, idasDeDias, juntarIdas, MAKRO_CONHECIDAS, gerarExcel, gerarMapa, gerarPdf, juntarConfig, nomeFicheiro, SEMANA, trocarPessoa } from '../lib/mapaKms'
+import { calcularMapa, CHAVE_GUARDADO, CONFIG_PADRAO, gerarExcel, gerarPdf, lerGuardado, nomeFicheiro, SEMANA } from '../lib/mapaKms'
 
-const CHAVE = 'faturaclaro-mapa-kms'
-const lerGuardado = () => { try { return JSON.parse(localStorage.getItem(CHAVE) || '{}') } catch { return {} } }
-const guardar = v => { try { localStorage.setItem(CHAVE, JSON.stringify(v)) } catch { /* sem armazenamento local */ } }
+const guardar = v => { try { localStorage.setItem(CHAVE_GUARDADO, JSON.stringify(v)) } catch { /* sem armazenamento local */ } }
 const euro = v => `${Number(v).toLocaleString('pt-PT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`
 
 function mesesParaEscolher() {
@@ -27,24 +25,14 @@ export default function MapaKms() {
   const [mes, setMes] = useState(`${hoje.getFullYear()}-${hoje.getMonth() + 1}`)
   const [ano, m] = mes.split('-').map(Number)
   const [guardado, setGuardado] = useState(lerGuardado)
-  const cfg = useMemo(() => juntarConfig(guardado.config), [guardado.config])
   const chaveMes = `${ano}-${String(m).padStart(2, '0')}`
-  const doMes = guardado.meses?.[chaveMes] || {}
+  const { cfg, doMes, automaticas, idas, mapa } = useMemo(() => calcularMapa({ invoices, ano, mes: m, guardado }), [invoices, ano, m, guardado])
   const variante = doMes.variante || 0
-  // Dias juntados/tirados à mão (formato antigo: só Makro).
-  const extra = [...(doMes.idasExtra || []), ...(doMes.makroExtra || []).map(dia => ({ dia, loja: 'makro' }))]
-  const tirar = [...(doMes.idasTirar || []), ...(doMes.makroTirar || []).map(d => `${d}:makro`)]
   const [verDefs, setVerDefs] = useState(false)
   const [novaData, setNovaData] = useState('')
   const [novaLoja, setNovaLoja] = useState('makro')
   const [busy, setBusy] = useState(false)
 
-  const datasLidas = guardado.makroDatas
-  const automaticas = useMemo(() => juntarIdas(
-    idasDasFaturas(invoices, ano, m, cfg.lojas),
-    idasDeDias(diasDoMes(MAKRO_CONHECIDAS, ano, m), 'makro'),
-    idasDeDias(diasDoMes(datasLidas, ano, m), 'makro'),
-  ), [invoices, ano, m, datasLidas, cfg.lojas])
   const [lendo, setLendo] = useState(false)
   async function lerPrint(files) {
     setLendo(true)
@@ -58,15 +46,8 @@ export default function MapaKms() {
     setMes(`${Number(primeira.slice(0, 4))}-${Number(primeira.slice(5, 7))}`)
     toast(`Li ${r.datas.length} datas da Makro: ${r.datas.map(d => `${d.slice(8, 10)}/${d.slice(5, 7)}`).join(', ')}.`)
   }
-  const idas = useMemo(() => {
-    const r = juntarIdas(automaticas, ...extra.map(x => ({ [x.dia]: [x.loja] })))
-    for (const t of tirar) { const [d, k] = t.split(':'); if (r[d]) r[d] = r[d].filter(x => x !== k) }
-    return r
-  }, [automaticas, extra, tirar])
   const listaIdas = Object.entries(idas).flatMap(([d, ks]) => ks.map(k => ({ dia: Number(d), loja: k }))).sort((a, b) => a.dia - b.dia)
   const nomeLoja = k => cfg.lojas.find(l => l.chave === k)?.local || k
-  const base = useMemo(() => gerarMapa({ ano, mes: m, idas, config: cfg, variante }), [ano, m, idas, cfg, variante])
-  const mapa = useMemo(() => (doMes.trocas || []).reduce((r, d) => trocarPessoa(r, d), base), [base, doMes.trocas])
 
   const mudarMes = alt => {
     const novo = { ...guardado, meses: { ...(guardado.meses || {}), [chaveMes]: { ...doMes, ...alt } } }
