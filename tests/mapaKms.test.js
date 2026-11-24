@@ -49,6 +49,20 @@ describe('mapa de kms', () => {
     for (const d of [3, 9, 13, 20]) expect(linhas.filter(l => l.dia === d && l.local.includes('Chalet'))).toHaveLength(1)
   })
 
+  it('os dois recebem quase o mesmo (no máximo 50 € de diferença) em vários meses', () => {
+    for (let mes = 1; mes <= 12; mes++) for (let v = 0; v < 5; v++) {
+      const m = gerarMapa({ ano: 2027, mes, makro: [3, 9, 13, 20].slice(0, (mes + v) % 5), variante: v })
+      const [a, b] = m.recibos
+      expect(Math.abs(a.total - b.total)).toBeLessThanOrEqual(50)
+      expect(Math.abs(a.dias - b.dias)).toBeLessThanOrEqual(1)
+    }
+    expect(Math.abs(mapa.recibos[0].total - mapa.recibos[1].total)).toBeLessThanOrEqual(50)
+  })
+
+  it('matrícula do Joel', () => {
+    expect(mapa.recibos[1].viatura).toBe('AR-65-LL')
+  })
+
   it('totais a 0,40 €/km', () => {
     for (const r of mapa.recibos) {
       expect(r.totalKms).toBe(r.linhas.reduce((s, l) => s + l.kms, 0))

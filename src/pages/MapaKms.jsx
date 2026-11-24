@@ -101,6 +101,11 @@ export default function MapaKms() {
           </span>
           <div className="muted small">Vêm das faturas com fornecedor "Makro" (envia-as como as outras faturas). Podes juntar um dia à mão se a fatura ainda não estiver na app.</div>
         </div>
+        {(() => {
+          const dif = Math.abs(mapa.recibos[0].total - mapa.recibos[1].total)
+          const max = Number(cfg.diferencaMaxima) || 0
+          return <div className={`notice ${dif > max ? 'warn' : 'ok'}`}>Diferença entre os dois: <strong>{euro(dif)}</strong>{dif > max ? ` (mais de ${euro(max)}: carrega em "Baralhar outra vez" ou desfaz as trocas à mão)` : ` (máximo ${euro(max)})`}</div>
+        })()}
         {verDefs && <Definicoes cfg={cfg} setDestino={setDestino} setPessoa={setPessoa} mudarConfig={mudarConfig} />}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 16, marginTop: 12 }}>
           {mapa.recibos.map((rec, i) => (
@@ -140,6 +145,7 @@ function Definicoes({ cfg, setDestino, setPessoa, mudarConfig }) {
         <label>Firma <input value={cfg.firma} onChange={e => mudarConfig({ ...cfg, firma: e.target.value })} style={{ minWidth: 220 }} /></label>
         <label>NIF <input value={cfg.nif} onChange={e => mudarConfig({ ...cfg, nif: e.target.value })} style={{ width: 110 }} /></label>
         <label>Assinado em <input value={cfg.localAssinatura} onChange={e => mudarConfig({ ...cfg, localAssinatura: e.target.value })} style={{ width: 110 }} /></label>
+        <label>Diferença máx. (€) <input type="number" step="1" min="0" value={cfg.diferencaMaxima} onChange={e => mudarConfig({ ...cfg, diferencaMaxima: Number(e.target.value) || 0 })} style={{ width: 70 }} /></label>
         <label>€ por km <input type="number" step="0.01" min="0" value={cfg.precoKm} onChange={e => mudarConfig({ ...cfg, precoKm: Number(e.target.value) || 0 })} style={{ width: 80 }} /></label>
         <label><input type="checkbox" checked={cfg.makroLinhaAParte} onChange={e => mudarConfig({ ...cfg, makroLinhaAParte: e.target.checked })} /> No dia da Makro também vão ao Chalet do Lago</label>
       </div>
