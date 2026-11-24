@@ -246,6 +246,26 @@ export async function lerMesesDoFicheiro(ficheiro) {
 
 export const nomeMes = (ano, mes) => `${MESES[mes - 1][0].toUpperCase()}${MESES[mes - 1].slice(1)} ${ano}`
 
+// Números de uma linha: o que o Daniel corrigiu à mão (l.corrigido) ou, senão, o que veio do horário.
+export const CAMPOS_CORRIGIVEIS = ['feriados', 'noites', 'ferias', 'faltas']
+export function qtdHorario(l, campo) {
+  const v = l[campo]
+  return Array.isArray(v) ? v.length : Number(v) || 0
+}
+export function qtd(l, campo) {
+  const c = l.corrigido?.[campo]
+  return Number.isInteger(c) && c >= 0 ? c : qtdHorario(l, campo)
+}
+
+// Corrige um número (texto vazio volta ao valor do horário).
+export function corrigir(l, campo, texto) {
+  const corrigido = { ...(l.corrigido || {}) }
+  const n = String(texto ?? '').trim() === '' ? null : Math.max(0, Math.round(Number(String(texto).replace(',', '.'))))
+  if (n === null || !Number.isFinite(n) || n === qtdHorario(l, campo)) delete corrigido[campo]
+  else corrigido[campo] = n
+  return { ...l, corrigido }
+}
+
 // Colunas do ficheiro para a contabilidade (iguais às da folha original).
 export const COLUNAS = [
   { titulo: 'Codigo', largura: 9, mm: 13, campo: 'codigo' },
@@ -253,12 +273,12 @@ export const COLUNAS = [
   { titulo: 'Venc.', largura: 12, mm: 20, campo: 'vencimento' },
   { titulo: 'Data', cima: 'Admissão', largura: 12, mm: 19, campo: 'admissao' },
   { titulo: 'Ajud. Custo', codigo: 'ajudCusto', largura: 11, mm: 17 },
-  { titulo: 'Feriado', codigo: 'feriado', largura: 9, mm: 14, campo: l => l.feriados.length || null },
-  { titulo: 'Noites', codigo: 'noites', largura: 9, mm: 14, campo: l => l.noites || null },
+  { titulo: 'Feriado', codigo: 'feriado', largura: 9, mm: 14, campo: l => qtd(l, 'feriados') || null },
+  { titulo: 'Noites', codigo: 'noites', largura: 9, mm: 14, campo: l => qtd(l, 'noites') || null },
   { titulo: 'Bx. Médica', codigo: 'bxMedica', largura: 11, mm: 17 },
   { titulo: 'Bx. Parentalid.', codigo: 'bxParentalidade', largura: 14, mm: 21 },
   { titulo: 'Bx. Seguro', codigo: 'bxSeguro', largura: 11, mm: 17 },
-  { titulo: 'Férias', codigo: 'ferias', largura: 9, mm: 13, campo: l => l.ferias.length || null },
+  { titulo: 'Férias', codigo: 'ferias', largura: 9, mm: 13, campo: l => qtd(l, 'ferias') || null },
   { titulo: 'Notas', largura: 45, campo: 'nota', esquerda: true },
   { titulo: 'IRS', largura: 9, mm: 11 },
 ]

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Empty, Panel, useToast } from '../components/ui'
-import { gerarExcel, gerarPdf, lerMesesDoFicheiro, lerOrdenados, nomeMes } from '../lib/ordenados'
+import { corrigir, gerarExcel, gerarPdf, lerMesesDoFicheiro, lerOrdenados, nomeMes, qtd, qtdHorario } from '../lib/ordenados'
 import { dataHora, deBase64, descarregar, paraBase64, XLSX_TYPE } from '../lib/ficheiros'
 import { supabase } from '../supabase'
 import { ePdf } from '../lib/horarioPdf'
@@ -8,7 +8,23 @@ import { lerHorarioPdf } from '../data/horarioPdf'
 
 const HISTORICO = 'ordenados_envios'
 
-const resumoDias = l => (l.length ? `${l.join(', ')}` : '')
+const resumoDias = l => (Array.isArray(l) && l.length ? `${l.join(', ')}` : '')
+
+// Número que vem do horário mas que se pode corrigir à mão (fica marcado e mostra o valor original).
+function Corrigivel({ linha, campo, onChange, rotulo }) {
+  const doHorario = qtdHorario(linha, campo)
+  const mudou = linha.corrigido?.[campo] !== undefined
+  const dias = resumoDias(linha[campo])
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, justifyContent: 'flex-end' }}>
+      <input type="number" min="0" step="1" inputMode="numeric" className="cell" value={qtd(linha, campo) || ''} placeholder="0"
+        onChange={e => onChange(e.target.value)} aria-label={`${rotulo} de ${linha.nome}`}
+        title={mudou ? `Corrigido à mão. No horário: ${doHorario}${dias ? ` (dia ${dias})` : ''}` : dias ? `Dias: ${dias}` : undefined}
+        style={{ width: 64, minWidth: 64, textAlign: 'right', ...(mudou ? { background: '#fff6d6', borderColor: '#f0d995', fontWeight: 700 } : {}) }} />
+      {mudou && <button type="button" className="link-btn small" title={`Voltar ao valor do horário (${doHorario})`} onClick={() => onChange('')}>↺</button>}
+    </span>
+  )
+}
 
 export default function Ordenados() {
   const toast = useToast()
@@ -69,6 +85,7 @@ export default function Ordenados() {
   useEffect(() => { setGuardado(null) }, [dados])
 
   const setNota = (i, nota) => setDados(d => ({ ...d, linhas: d.linhas.map((l, k) => (k === i ? { ...l, nota } : l)) }))
+  const setNumero = (i, campo, texto) => setDados(d => ({ ...d, linhas: d.linhas.map((l, k) => (k === i ? corrigir(l, campo, texto) : l)) }))
   const base = dados ? `Ordenados_contabilidade_${nomeMes(dados.ano, dados.mes).replace(' ', '_')}` : ''
 
   async function baixar(tipo) {
@@ -79,7 +96,7 @@ export default function Ordenados() {
         const { data, error } = await supabase.from(HISTORICO).insert({
           mes: `${dados.ano}-${String(dados.mes).padStart(2, '0')}`,
           nome_ficheiro: base,
-          linhas: dados.linhas.map(l => ({ codigo: l.codigo, nome: l.nome, feriados: l.feriados.length, noites: l.noites, ferias: l.ferias.length, nota: l.nota })),
+          linhas: dados.linhas.map(l => ({ codigo: l.codigo, nome: l.nome, feriados: qtd(l, 'feriados'), noites: qtd(l, 'noites'), ferias: qtd(l, 'ferias'), faltas: qtd(l, 'faltas'), nota: l.nota, ...(l.corrigido && Object.keys(l.corrigido).length ? { corrigido: l.corrigido } : {}) })),
           excel_base64: paraBase64(excel),
           pdf_base64: paraBase64(pdf),
         }).select('id').single()
@@ -107,7 +124,7 @@ export default function Ordenados() {
         </div>
       </Panel>
       {dados && (
-        <Panel title={`Ordenados de ${nomeMes(dados.ano, dados.mes)}`} hint={`Folha “${dados.folhaHorario}” do horário. Cada noite conta no dia em que começa. As faltas justificadas (vermelho) só aparecem aqui; se quiseres que vão para a contabilidade, escreve-as nas notas.`}
+        <Panel title={`Ordenados de ${nomeMes(dados.ano, dados.mes)}`} hint={`Folha “${dados.folhaHorario}” do horário. Cada noite conta no dia em que começa. Podes corrigir os feriados, noites, férias e faltas: o número fica a amarelo e ↺ volta ao do horário. As faltas justificadas (vermelho) só aparecem aqui; se quiseres que vão para a contabilidade, escreve-as nas notas.`}
           actions={<>
             <button className="primary" disabled={busy} onClick={() => baixar('xlsx')}>Descarregar Excel</button>
             <button className="secondary" disabled={busy} onClick={() => baixar('pdf')}>Descarregar PDF</button>
@@ -125,10 +142,10 @@ export default function Ordenados() {
               <tr key={`${l.codigo}-${l.nome}`} className={l.noHorario ? '' : 'row-muted'}>
                 <td>{l.codigo ?? ''}</td>
                 <td>{l.nome}{!l.noHorario && <span className="muted small"> · não está no horário</span>}</td>
-                <td className="money" title={resumoDias(l.feriados)}>{l.feriados.length || ''}</td>
-                <td className="money">{l.noites || ''}</td>
-                <td className="money" title={resumoDias(l.ferias)}>{l.ferias.length || ''}</td>
-                <td>{l.faltas.length ? `${l.faltas.length} (dia ${resumoDias(l.faltas)})` : ''}</td>
+                <td className="money"><Corrigivel linha={l} campo="feriados" rotulo="Feriados" onChange={v => setNumero(i, 'feriados', v)} /></td>
+                <td className="money"><Corrigivel linha={l} campo="noites" rotulo="Noites" onChange={v => setNumero(i, 'noites', v)} /></td>
+                <td className="money"><Corrigivel linha={l} campo="ferias" rotulo="Férias" onChange={v => setNumero(i, 'ferias', v)} /></td>
+                <td><Corrigivel linha={l} campo="faltas" rotulo="Faltas justificadas" onChange={v => setNumero(i, 'faltas', v)} />{l.faltas.length > 0 && l.corrigido?.faltas === undefined && <span className="muted small"> dia {resumoDias(l.faltas)}</span>}</td>
                 <td><input value={l.nota} onChange={e => setNota(i, e.target.value)} placeholder="Sem notas" aria-label={`Notas de ${l.nome}`} style={{ width: '100%', minWidth: 220 }} /></td>
               </tr>
             )) : <Empty colSpan={7}>A folha da contabilidade não tem funcionários.</Empty>}</tbody>
