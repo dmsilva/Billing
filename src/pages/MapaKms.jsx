@@ -3,7 +3,8 @@ import { Empty, Panel, useToast } from '../components/ui'
 import { useData } from '../data/DataProvider'
 import { descarregar, XLSX_TYPE } from '../lib/ficheiros'
 import { nomeMes } from '../lib/ordenados'
-import { CONFIG_PADRAO, diasMakro, gerarExcel, gerarMapa, gerarPdf, juntarConfig, nomeFicheiro, SEMANA, trocarPessoa } from '../lib/mapaKms'
+import { lerDatasMakro } from '../data/makroLeitura'
+import { CONFIG_PADRAO, diasDoMes, diasMakro, MAKRO_CONHECIDAS, gerarExcel, gerarMapa, gerarPdf, juntarConfig, nomeFicheiro, SEMANA, trocarPessoa } from '../lib/mapaKms'
 
 const CHAVE = 'faturaclaro-mapa-kms'
 const lerGuardado = () => { try { return JSON.parse(localStorage.getItem(CHAVE) || '{}') } catch { return {} } }
@@ -35,7 +36,21 @@ export default function MapaKms() {
   const [novaData, setNovaData] = useState('')
   const [busy, setBusy] = useState(false)
 
-  const makroFaturas = useMemo(() => diasMakro(invoices, ano, m), [invoices, ano, m])
+  const datasLidas = guardado.makroDatas
+  const makroFaturas = useMemo(() => [...new Set([...diasMakro(invoices, ano, m), ...diasDoMes(MAKRO_CONHECIDAS, ano, m), ...diasDoMes(datasLidas, ano, m)])].sort((a, b) => a - b), [invoices, ano, m, datasLidas])
+  const [lendo, setLendo] = useState(false)
+  async function lerPrint(files) {
+    setLendo(true)
+    const r = await lerDatasMakro(files)
+    setLendo(false)
+    if (r.error) return toast(`Não consegui ler: ${r.error}`, 'bad')
+    if (!r.datas.length) return toast('Não encontrei datas nesse ficheiro.', 'bad')
+    const novo = { ...guardado, makroDatas: [...new Set([...(guardado.makroDatas || []), ...r.datas])].sort() }
+    setGuardado(novo); guardar(novo)
+    const primeira = r.datas[r.datas.length - 1]
+    setMes(`${Number(primeira.slice(0, 4))}-${Number(primeira.slice(5, 7))}`)
+    toast(`Li ${r.datas.length} datas da Makro: ${r.datas.map(d => `${d.slice(8, 10)}/${d.slice(5, 7)}`).join(', ')}.`)
+  }
   const makro = useMemo(() => [...new Set([...makroFaturas.filter(d => !tirar.includes(d)), ...extra])].sort((a, b) => a - b), [makroFaturas, extra, tirar])
   const base = useMemo(() => gerarMapa({ ano, mes: m, makro, config: cfg, variante }), [ano, m, makro, cfg, variante])
   const mapa = useMemo(() => (doMes.trocas || []).reduce((r, d) => trocarPessoa(r, d), base), [base, doMes.trocas])
@@ -99,7 +114,10 @@ export default function MapaKms() {
             <input type="date" value={novaData} onChange={e => setNovaData(e.target.value)} aria-label="Dia da Makro a juntar" style={{ marginLeft: 6 }} />
             <button className="secondary small" onClick={juntarMakro} disabled={!novaData}>Juntar dia</button>
           </span>
-          <div className="muted small">Vêm das faturas com fornecedor "Makro" (envia-as como as outras faturas). Podes juntar um dia à mão se a fatura ainda não estiver na app.</div>
+          <div style={{ marginTop: 6 }}>
+            <label className="file-button"><input type="file" multiple accept="image/jpeg,image/png,image/webp,application/pdf" disabled={lendo} onChange={e => { if (e.target.files.length) lerPrint(e.target.files); e.target.value = '' }} />{lendo ? 'A ler as datas…' : 'Enviar print da lista de faturas da Makro'}</label>
+          </div>
+          <div className="muted small">Envia o print da app da Makro (lista de faturas) e as datas entram sozinhas. Também contam as faturas com fornecedor "Makro" que já estão na app. Podes juntar ou tirar um dia à mão.</div>
         </div>
         {(() => {
           const dif = Math.abs(mapa.recibos[0].total - mapa.recibos[1].total)

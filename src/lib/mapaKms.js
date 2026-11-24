@@ -77,6 +77,26 @@ export function semanasDoMes(ano, mes) {
   return semanas
 }
 
+// Idas à Makro já conhecidas (lista de faturas da app da Makro enviada pelo Daniel em 2026-11-24; 25/11 dito por ele).
+export const MAKRO_CONHECIDAS = ['2026-10-23', '2026-10-27', '2026-11-03', '2026-11-09', '2026-11-13', '2026-11-20', '2026-11-25']
+
+// Leitura automática de um print da lista de faturas da Makro (função ler-makro).
+export const MAKRO_SCHEMA = {
+  type: 'object',
+  properties: { datas: { type: 'array', items: { type: 'string', description: 'Data da fatura no formato AAAA-MM-DD' } } },
+  required: ['datas'],
+  additionalProperties: false,
+}
+export const makroPrompt = hoje => `Isto é uma lista de faturas da Makro (print da app da Makro) ou faturas da Makro em PDF.
+Devolve a data de cada fatura, no formato AAAA-MM-DD (nas imagens aparecem como DD.MM.AAAA). Inclui todas as datas visíveis, mesmo repetidas; ignora as que estão cortadas e não se leem bem.
+Hoje é ${hoje}.`
+export function datasMakroLidas(r) {
+  const ok = (r?.datas || []).map(d => String(d).trim()).filter(d => /^\d{4}-\d{2}-\d{2}$/.test(d) && !Number.isNaN(Date.parse(d)))
+  return [...new Set(ok)].sort()
+}
+// Dias do mês (números) a partir de uma lista de datas AAAA-MM-DD.
+export const diasDoMes = (datas, ano, mes) => [...new Set((datas || []).filter(d => d.startsWith(`${ano}-${pad(mes)}-`)).map(d => Number(d.slice(8, 10))))].sort((a, b) => a - b)
+
 const eMakro = f => /makro/i.test(String(f || ''))
 
 // Datas (AAAA-MM-DD) do mês com fatura da Makro (várias faturas no mesmo dia = uma ida).
