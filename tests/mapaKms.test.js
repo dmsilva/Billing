@@ -159,3 +159,22 @@ describe('idas às lojas pelas faturas', () => {
     expect(Math.abs(m.recibos[0].total - m.recibos[1].total)).toBeLessThanOrEqual(50)
   })
 })
+
+describe('assinaturas', () => {
+  // PNG 1×1 transparente
+  const png = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII='
+  const config = { pessoas: [{ assinatura: { src: png, ratio: 3 } }, { assinatura: { src: png, ratio: 2.5 } }] }
+  const m = gerarMapa({ ano: 2026, mes: 11, makro: [3, 9], config })
+  it('ficam no recibo de cada um e entram no PDF e no Excel', async () => {
+    expect(m.recibos.every(r => r.assinatura?.src === png)).toBe(true)
+    const pdf = new Uint8Array(await gerarPdf(m))
+    expect(new TextDecoder('latin1').decode(pdf)).toContain('/Subtype /Image')
+    const wb = new ExcelJS.Workbook()
+    await wb.xlsx.load(await gerarExcel(m))
+    expect(wb.worksheets[0].getImages()).toHaveLength(2)
+  })
+  it('sem assinatura o PDF não leva imagens', async () => {
+    const pdf = new Uint8Array(await gerarPdf(gerarMapa({ ano: 2026, mes: 11 })))
+    expect(new TextDecoder('latin1').decode(pdf)).not.toContain('/Subtype /Image')
+  })
+})

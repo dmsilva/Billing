@@ -4,6 +4,7 @@ import { useData } from '../data/DataProvider'
 import { descarregar, XLSX_TYPE } from '../lib/ficheiros'
 import { nomeMes } from '../lib/ordenados'
 import { lerDatasMakro } from '../data/makroLeitura'
+import { AssinaturaEditor } from '../components/Assinatura'
 import { CONFIG_PADRAO, diasDoMes, idasDasFaturas, idasDeDias, juntarIdas, MAKRO_CONHECIDAS, gerarExcel, gerarMapa, gerarPdf, juntarConfig, nomeFicheiro, SEMANA, trocarPessoa } from '../lib/mapaKms'
 
 const CHAVE = 'faturaclaro-mapa-kms'
@@ -151,7 +152,7 @@ export default function MapaKms() {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 16, marginTop: 12 }}>
           {mapa.recibos.map((rec, i) => (
             <div key={i}>
-              <h3 style={{ margin: '4px 0' }}>{rec.nome} <span className="muted small">· {rec.viatura} · {rec.dias} dias</span></h3>
+              <h3 style={{ margin: '4px 0' }}>{rec.nome} <span className="muted small">· {rec.viatura} · {rec.dias} dias{rec.assinatura?.src ? ' · assinado' : ' · sem assinatura (põe em Definições)'}</span></h3>
               <div className="tablewrap"><table className="mini-table">
                 <thead><tr><th>Dia</th><th>Local de destino</th><th>Tempo</th><th>Objetivo</th><th className="money">Kms</th><th /></tr></thead>
                 <tbody>{rec.linhas.length ? rec.linhas.map((l, k) => (
@@ -179,6 +180,7 @@ export default function MapaKms() {
 }
 
 function Definicoes({ cfg, setDestino, setPessoa, mudarConfig }) {
+  const toast = useToast()
   const nomes = { chalet: 'Chalet do Lago', ponteSor: 'Ponte de Sor' }
   return (
     <div className="notice" style={{ display: 'grid', gap: 8 }}>
@@ -194,6 +196,7 @@ function Definicoes({ cfg, setDestino, setPessoa, mudarConfig }) {
         <div className="actions" key={i}>
           <label>Nome <input value={p.nome} onChange={e => setPessoa(i, 'nome', e.target.value)} style={{ minWidth: 220 }} /></label>
           <label>Viatura <input value={p.viatura} onChange={e => setPessoa(i, 'viatura', e.target.value)} style={{ width: 100 }} /></label>
+          <AssinaturaEditor valor={p.assinatura} onChange={a => setPessoa(i, 'assinatura', a)} onErro={msg => toast(msg, 'bad')} />
         </div>
       ))}
       {Object.entries(cfg.destinos).map(([k, d]) => (
@@ -219,7 +222,7 @@ function Definicoes({ cfg, setDestino, setPessoa, mudarConfig }) {
         )
       })}
       <div><button className="secondary small" onClick={() => mudarConfig({ ...cfg, lojas: [...cfg.lojas, { chave: `loja${Date.now()}`, procura: '', local: 'Nova loja', cidade: 'Lisboa', kms: 10, tempos: ['1 hora'], objetivo: 'Compras' }] })}>+ Juntar loja</button></div>
-      <div><button className="link-btn" onClick={() => mudarConfig(CONFIG_PADRAO)}>Voltar às definições de origem</button></div>
+      <div><button className="link-btn" onClick={() => mudarConfig({ ...CONFIG_PADRAO, pessoas: CONFIG_PADRAO.pessoas.map((p, i) => ({ ...p, assinatura: cfg.pessoas[i]?.assinatura })) })}>Voltar às definições de origem</button></div>
     </div>
   )
 }

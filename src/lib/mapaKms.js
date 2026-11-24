@@ -254,6 +254,13 @@ export function dataRecibo(ano, mes) {
 }
 const cap = s => s.charAt(0).toUpperCase() + s.slice(1)
 
+// Assinatura guardada nas definições: { src: 'data:image/png;base64,…', ratio: largura/altura }.
+export function assinaturaValida(a) {
+  if (!a || typeof a.src !== 'string' || !a.src.startsWith('data:image/png;base64,')) return null
+  const ratio = Number(a.ratio)
+  return { src: a.src, ratio: ratio > 0.2 && ratio < 20 ? ratio : 3 }
+}
+
 export const nomeFicheiro = mapa => `Mapa_de_Kms_${nomeMes(mapa.ano, mapa.mes).replace(' ', '_')}`
 const euro = v => Number(v).toLocaleString('pt-PT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const kmTxt = v => Number(v).toLocaleString('pt-PT')
@@ -325,7 +332,16 @@ export async function gerarExcel(mapa) {
     ws.mergeCells(rf + 4, c0, rf + 4, c0 + 2)
     Object.assign(cel(rf + 4, 0), { value: `${mapa.cfg.localAssinatura}, ${assin.dia} / ${assin.mes} / ${assin.ano}`, alignment: { horizontal: 'center' } })
     ws.mergeCells(rf + 4, c0 + 3, rf + 4, c0 + 4)
-    Object.assign(cel(rf + 4, 3), { value: '______________________', alignment: { horizontal: 'center' } })
+    Object.assign(cel(rf + 4, 3), { value: '______________________', alignment: { horizontal: 'center', vertical: 'bottom' } })
+    cel(rf + 4, 0).alignment = { horizontal: 'center', vertical: 'bottom' }
+    const a = assinaturaValida(rec.assinatura)
+    if (a) {
+      // Assinatura de quem recebe, por cima da linha.
+      ws.getRow(rf + 4).height = 42
+      const alt = 38, larg = Math.min(170, alt * a.ratio)
+      const id = wb.addImage({ base64: a.src, extension: 'png' })
+      ws.addImage(id, { tl: { col: c0 + 3 - 1 + 0.15, row: rf + 4 - 1 + 0.02 }, ext: { width: larg, height: Math.min(alt, larg / a.ratio) } })
+    }
   })
   ws.pageSetup = { paperSize: 9, orientation: 'portrait', fitToPage: true, fitToWidth: 1, fitToHeight: 1, horizontalCentered: true, margins: { left: 0.3, right: 0.3, top: 0.4, bottom: 0.4, header: 0.2, footer: 0.2 } }
   return wb.xlsx.writeBuffer()
@@ -379,10 +395,15 @@ export async function gerarPdf(mapa) {
     linhaTotal('Total de Kms.', kmTxt(rec.totalKms), true); y += 5
     doc.setFont('times', 'normal'); doc.text(`VIATURA: ${rec.viatura}`, x, y)
     linhaTotal('Preço por Km.', `${euro(mapa.cfg.precoKm)} €`); y += 5
-    linhaTotal('Total a Receber', `${euro(rec.total)} €`, true); y += 9
+    linhaTotal('Total a Receber', `${euro(rec.total)} €`, true); y += assinaturaValida(rec.assinatura) ? 20 : 9
     doc.setFont('times', 'normal')
     doc.text(`${mapa.cfg.localAssinatura},   ${assin.dia} / ${assin.mes} / ${assin.ano}`, x + 2, y)
     doc.line(x + larg - 38, y, x + larg - 2, y)
+    const a = assinaturaValida(rec.assinatura)
+    if (a) {
+      const alt = Math.min(14, 36 / a.ratio), w = alt * a.ratio
+      doc.addImage(a.src, 'PNG', x + larg - 20 - w / 2, y - alt - 0.5, w, alt)
+    }
   })
   return doc.output('arraybuffer')
 }
