@@ -387,3 +387,5 @@ tr.row-alert td{background:#fff5f3}tr.row-alert td:first-child{box-shadow:inset 
 .page-tabs .nav-badge{margin-left:0}
 @media(max-width:760px){.page-tabs{flex-wrap:nowrap;overflow-x:auto;margin-top:0}.page-tabs a{padding:9px 11px;font-size:13px}}
 .nc-check{display:flex!important;gap:8px;align-items:flex-start;flex-direction:row!important;font-weight:600;margin:6px 0}.nc-check input{width:auto!important;margin-top:3px;flex:none}
+input.invalid{border-color:#c94a5a;background:#fff4f5}
+.modal input[type=checkbox]{height:auto;width:auto;padding:0}
