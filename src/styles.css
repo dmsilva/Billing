@@ -321,7 +321,7 @@ td.wrap{white-space:normal;min-width:180px}
 .drop-overlay>div{background:#fff;border:3px dashed var(--accent);border-radius:20px;padding:34px 40px;font-size:20px;font-weight:800;text-align:center;max-width:90vw}
 .drop-overlay small{display:block;font-size:13px;font-weight:500;color:var(--muted);margin-top:8px}
 .drop-card{display:grid;grid-template-columns:130px 1fr;gap:16px;border:1px solid var(--line);border-radius:14px;padding:14px;margin-top:14px}
-.drop-card.gravada{background:#f3fbf6;border-color:#bfe6cf}
+.drop-card.gravada,.drop-card.junta{background:#f3fbf6;border-color:#bfe6cf}.drop-card.ignorada{opacity:.6}
 .drop-thumb{display:flex;flex-direction:column;gap:6px;align-items:center;text-decoration:none;color:var(--muted);font-size:11px;word-break:break-all;text-align:center}
 .drop-thumb img{width:120px;max-height:170px;object-fit:contain;border:1px solid var(--line);border-radius:8px;background:#fff}
 .drop-thumb span{width:120px;height:150px;display:grid;place-items:center;border:1px solid var(--line);border-radius:8px;background:#fafbfc;font-weight:800;color:var(--danger);font-size:22px}

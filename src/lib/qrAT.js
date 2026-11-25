@@ -44,6 +44,7 @@ export function parseQrAT(text) {
   return {
     nif: emitente,
     nif_cliente: f.B && f.B !== '999999990' ? nif(f.B) : null,
+    consumidor_final: f.B === '999999990',
     tipo,
     tipo_nome: DOC_TYPES[tipo] || tipo || null,
     anulado: String(f.E || '').toUpperCase() === 'A',
