@@ -124,7 +124,8 @@ export default function FaturasEmail() {
               {view === 'pendente' && <>
               <label className="small">Pagamento{' '}
                 <select value={pagamento} onChange={e => setPagamento(e.target.value)}>
-                  <option value="CGD">🏦 Débito direto / CGD</option>
+                  <option value="CGD">🏦 Débito direto (CGD)</option>
+                  <option value="CGD-cartao">💳 Cartão / transferência (CGD)</option>
                   <option value="Por pagar">🕓 Ainda por pagar</option>
                   <option value="">Ver na fatura</option>
                 </select>
@@ -136,7 +137,7 @@ export default function FaturasEmail() {
               <button type="button" className="secondary" disabled={busy || !chosen.length} onClick={() => review(chosen.map(r => r.id))}>Rever uma a uma</button>
               </>}
             </div>
-            {view === 'pendente' && <div className="small muted">Ao gravar, a aplicação lê cada fatura (fornecedor, data, valor) e grava logo as que ficam completas e não estão repetidas. As que tiverem dúvidas ficam abertas para veres.</div>}
+            {view === 'pendente' && <div className="small muted">Ao gravar, a aplicação lê cada fatura e: grava as completas e novas; se a fatura já estava registada (ex.: foto da receção), junta-lhe o PDF do email e lê os produtos a partir dele; as que não têm o NIF da empresa vão para Ignoradas. As que tiverem dúvidas ficam abertas para veres.</div>}
           </div>
         )}
         {rows === null ? <div className="notice">A carregar…</div> : !list.length ? (

@@ -5,11 +5,22 @@ import { matchProperty, normalizeReading } from './invoiceReading.js'
 import { ruleFor, supplierKey } from './autoInvoices.js'
 import { parseMoney } from './money.js'
 
+// NIF da empresa (Patricia Jesus Pereira Unip Lda). Faturas do email com outro NIF de cliente,
+// ou de consumidor final, não são despesas da empresa.
+export const EMPRESA_NIFS = ['513102914']
+
+// 'sim' (tem o NIF da empresa), 'nao' (outro cliente ou consumidor final) ou '?' (não se conseguiu ler).
+export function clienteEmpresa({ nifCliente, consumidorFinal }) {
+  if (nifCliente) return EMPRESA_NIFS.includes(nifCliente) ? 'sim' : 'nao'
+  return consumidorFinal ? 'nao' : '?'
+}
+
 const formatAmount = n => (n === null || n === undefined ? '' : Number(n).toFixed(2).replace('.', ','))
 const cents = v => (v === null || v === undefined || v === '' ? null : Math.round(Number(v) * 100))
 
 // "FT 2026A/123", "ft2026a-123" e "FT 2026 A/123" são o mesmo documento.
-export const docKey = s => String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '')
+// Zeros à esquerda não contam: "FS 0451/22334" (PDF) e "FS 451/22334" (lido da foto) são o mesmo.
+export const docKey = s => (String(s || '').toUpperCase().match(/[A-Z]+|\d+/g) || []).map(t => (/^\d/.test(t) ? t.replace(/^0+(?=\d)/, '') : t)).join('')
 
 // Documentos que já vêm pagos: fatura-recibo, fatura simplificada (talão de loja), venda a dinheiro, talão e recibo.
 const PAID_QR = new Set(['FR', 'FS', 'VD', 'TV', 'RG', 'RC'])
@@ -88,6 +99,8 @@ export function buildDraft({ qr, leitura, invoices = [], properties = [], rules 
     pagaNoAto,
     nif: nif || '',
     atcud: qr?.atcud || '',
+    nifCliente: qr?.nif_cliente || r?.nif_cliente || '',
+    consumidorFinal: Boolean(qr?.consumidor_final && !r?.nif_cliente),
     tipo: qr?.tipo_nome || AI_TIPO_NOME[r?.tipo_documento] || null,
     fonte,
     avisos,
