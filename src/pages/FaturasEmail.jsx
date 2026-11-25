@@ -4,7 +4,8 @@ import { supabase, localMode } from '../supabase'
 import { Panel, useToast, ConfirmButton } from '../components/ui'
 import { EMAIL_SAVED_EVENT, openDroppedInvoices } from '../components/ArrastarFaturas'
 import { EMAIL_QUEUE_EVENT } from '../components/Layout'
-import { EMAIL_SELECT, buildAppsScript, rowToFile, senderName } from '../lib/emailFaturas'
+import { EMAIL_SELECT, base64ToBytes, buildAppsScript, rowToFile, senderName } from '../lib/emailFaturas'
+import ImprimirFaturas from '../components/ImprimirFaturas'
 import { formatDate } from '../lib/dates'
 
 const kb = n => (n ? `${Math.max(1, Math.round(n / 1024))} KB` : '')
@@ -20,6 +21,7 @@ export default function FaturasEmail() {
   const [chave, setChave] = useState('')
   const [sel, setSel] = useState(() => new Set())
   const [pagamento, setPagamento] = useState('CGD')
+  const [printing, setPrinting] = useState(null)
 
   const load = useCallback(async () => {
     const { data, error } = await supabase.from('email_faturas').select(EMAIL_SELECT).order('recebido_em', { ascending: false }).limit(500)
@@ -60,6 +62,22 @@ export default function FaturasEmail() {
     setSel(new Set())
   }
 
+  // Várias faturas do email num só PDF para imprimir (só as páginas que interessam de cada fornecedor).
+  const printItems = rs => rs.map(r => ({ id: r.id, names: [senderName(r.remetente), r.remetente, r.assunto, r.nome_ficheiro] }))
+  async function buildPrint(rs, { pagesById, newSheet, onProgress }) {
+    const { buildMergedPdf, browserToJpeg } = await import('../lib/pdfUnico')
+    const rows = rs.map(r => ({
+      id: r.id, data: String(r.recebido_em || r.created_at || '').slice(0, 10), fornecedor: senderName(r.remetente) || 'Sem remetente', documento: '', valor: null,
+      source: { invoice_files: [{ storage_path: r.id, mime: r.mime, nome_ficheiro: r.nome_ficheiro }] },
+    }))
+    const download = async id => {
+      const { data, error } = await supabase.from('email_faturas').select('conteudo_b64').eq('id', id).single()
+      if (error) throw error
+      return base64ToBytes(data.conteudo_b64)
+    }
+    return buildMergedPdf(rows, download, { onProgress, toJpeg: browserToJpeg, newSheet, pagesFor: e => pagesById[e.row.id] })
+  }
+
   async function open(row) {
     const { data, error } = await supabase.from('email_faturas').select('id, nome_ficheiro, mime, conteudo_b64, remetente, assunto').eq('id', row.id).single()
     if (error) return toast(error.message, 'bad')
@@ -82,14 +100,14 @@ export default function FaturasEmail() {
         {missing && <div className="notice warn">Falta executar o <strong>supabase/12_faturas_email.sql</strong> no SQL Editor do Supabase para ativar esta página.</div>}
         <div className="tabs" role="tablist">
           {Object.entries(VIEWS).map(([k, label]) => (
-            <button key={k} type="button" role="tab" aria-selected={view === k} className={view === k ? 'on' : ''} onClick={() => setView(k)}>
+            <button key={k} type="button" role="tab" aria-selected={view === k} className={view === k ? 'on' : ''} onClick={() => { setView(k); setSel(new Set()) }}>
               {label} <span className="tab-count">{counts[k] || 0}</span>
             </button>
           ))}
           <span style={{ flex: 1 }} />
           <button type="button" className="secondary" onClick={load}>↻ Atualizar</button>
         </div>
-        {view === 'pendente' && list.length > 0 && (
+        {list.length > 0 && (
           <div className="email-bulk">
             <div className="email-chips">
               <span className="small muted">Escolher:</span>
@@ -99,6 +117,11 @@ export default function FaturasEmail() {
               ))}
             </div>
             <div className="email-actions">
+              <button type="button" className="secondary" disabled={!chosen.length} onClick={() => setPrinting(chosen)}
+                title="Junta as escolhidas num só PDF, só com as páginas que interessam de cada fornecedor">
+                🖨 Imprimir {chosen.length || ''} escolhida{chosen.length === 1 ? '' : 's'}
+              </button>
+              {view === 'pendente' && <>
               <label className="small">Pagamento{' '}
                 <select value={pagamento} onChange={e => setPagamento(e.target.value)}>
                   <option value="CGD">🏦 Débito direto / CGD</option>
@@ -111,19 +134,20 @@ export default function FaturasEmail() {
                 {busy ? 'A abrir…' : `✓ Gravar ${chosen.length || ''} selecionada${chosen.length === 1 ? '' : 's'}`}
               </button>
               <button type="button" className="secondary" disabled={busy || !chosen.length} onClick={() => review(chosen.map(r => r.id))}>Rever uma a uma</button>
+              </>}
             </div>
-            <div className="small muted">Ao gravar, a aplicação lê cada fatura (fornecedor, data, valor) e grava logo as que ficam completas e não estão repetidas. As que tiverem dúvidas ficam abertas para veres.</div>
+            {view === 'pendente' && <div className="small muted">Ao gravar, a aplicação lê cada fatura (fornecedor, data, valor) e grava logo as que ficam completas e não estão repetidas. As que tiverem dúvidas ficam abertas para veres.</div>}
           </div>
         )}
         {rows === null ? <div className="notice">A carregar…</div> : !list.length ? (
           <div className="empty">{view === 'pendente' ? 'Não há faturas do email por tratar.' : 'Nada aqui.'}</div>
         ) : (
           <div className="tablewrap"><table className="mini-table">
-            <thead><tr>{view === 'pendente' && <th style={{ width: 28 }}><input type="checkbox" aria-label="Escolher todas" checked={list.length > 0 && chosen.length === list.length} onChange={e => toggle(list.map(r => r.id), e.target.checked)} /></th>}<th>Recebido</th><th>De</th><th>Assunto</th><th>Ficheiro</th><th></th></tr></thead>
+            <thead><tr>{<th style={{ width: 28 }}><input type="checkbox" aria-label="Escolher todas" checked={list.length > 0 && chosen.length === list.length} onChange={e => toggle(list.map(r => r.id), e.target.checked)} /></th>}<th>Recebido</th><th>De</th><th>Assunto</th><th>Ficheiro</th><th></th></tr></thead>
             <tbody>
               {list.map(r => (
                 <tr key={r.id} className={sel.has(r.id) ? 'selected' : ''}>
-                  {view === 'pendente' && <td><input type="checkbox" aria-label={`Escolher ${r.nome_ficheiro}`} checked={sel.has(r.id)} onChange={e => toggle([r.id], e.target.checked)} /></td>}
+                  {<td><input type="checkbox" aria-label={`Escolher ${r.nome_ficheiro}`} checked={sel.has(r.id)} onChange={e => toggle([r.id], e.target.checked)} /></td>}
                   <td>{formatDate(String(r.recebido_em || r.created_at).slice(0, 10))}</td>
                   <td title={r.remetente || ''}>{senderName(r.remetente)}{r.conta ? <div className="small muted">para {r.conta}</div> : null}</td>
                   <td>{r.assunto}</td>
@@ -142,6 +166,7 @@ export default function FaturasEmail() {
           </table></div>
         )}
       </Panel>
+      {printing && <ImprimirFaturas items={printItems(printing)} build={opts => buildPrint(printing, opts)} onClose={() => setPrinting(null)} />}
       {!missing && <Ligacao chave={chave} setChave={setChave} />}
     </>
   )

@@ -30,6 +30,7 @@ PSQL=(psql -h "$TMP" -p "$PORT" -U postgres -d postgres -v ON_ERROR_STOP=1 -q)
 "${PSQL[@]}" -f "$ROOT/supabase/17_pagamento_airbnb.sql" >/dev/null
 "${PSQL[@]}" -f "$ROOT/supabase/18_notas_credito.sql"
 "${PSQL[@]}" -f "$ROOT/supabase/19_dividas_colaboradores.sql"
+"${PSQL[@]}" -f "$ROOT/supabase/20_paginas_imprimir.sql"
 "${PSQL[@]}" -f "$ROOT/supabase/test/01_grants.sql"
 "${PSQL[@]}" -f "$ROOT/supabase/03_seed_legacy.sql"
 echo "Seed aplicado. A repetir para confirmar que é idempotente…"
@@ -48,6 +49,7 @@ echo "Seed aplicado. A repetir para confirmar que é idempotente…"
 "${PSQL[@]}" -f "$ROOT/supabase/15_caixas_app.sql"
 "${PSQL[@]}" -f "$ROOT/supabase/17_pagamento_airbnb.sql" >/dev/null
 "${PSQL[@]}" -f "$ROOT/supabase/19_dividas_colaboradores.sql"
+"${PSQL[@]}" -f "$ROOT/supabase/20_paginas_imprimir.sql"
 "${PSQL[@]}" -f "$ROOT/supabase/04_verificacao.sql" >/dev/null
 "${PSQL[@]}" -f "$ROOT/supabase/test/02_rls_and_functions_test.sql"
 "${PSQL[@]}" -f "$ROOT/supabase/test/03_pagamentos_test.sql"

@@ -1,5 +1,6 @@
 import { PDFDocument } from 'pdf-lib'
 import { zipPlan } from './zipFaturas.js'
+import { parsePages } from './paginas.js'
 
 // Todas as faturas escolhidas num só PDF, por ordem de data: os PDF entram com as suas páginas
 // e cada foto passa a uma página A4. Fotos que o pdf-lib não lê (WEBP, HEIC) são convertidas
@@ -34,34 +35,46 @@ async function addImage(out, bytes, kind) {
 }
 
 // download(path) -> bytes/Blob; toJpeg(bytes, mime) -> bytes JPG (opcional, só no navegador).
-export async function buildMergedPdf(rows, download, { onProgress, toJpeg } = {}) {
+// pagesFor(entry) -> "1-2" (opcional): só essas páginas de cada PDF.
+// newSheet: para imprimir frente e verso, cada fatura começa numa folha nova (junta-se uma
+// página em branco depois das que ficam com número ímpar de páginas).
+export async function buildMergedPdf(rows, download, { onProgress, toJpeg, pagesFor, newSheet } = {}) {
   const { entries, withoutFiles } = zipPlan(rows)
   const out = await PDFDocument.create()
   out.setTitle('Faturas')
   const failed = []
   let count = 0
   let done = 0
+  let blankAtEnd = false
   for (const e of entries) {
     try {
       let bytes = await toBytes(await download(e.path))
       let kind = kindOf(bytes, e.mime)
       if (kind === 'other' && toJpeg) { bytes = await toBytes(await toJpeg(bytes, e.mime)); kind = kindOf(bytes) }
+      const before = out.getPageCount()
       if (kind === 'pdf') {
         const src = await PDFDocument.load(bytes, { ignoreEncryption: true })
-        const pages = await out.copyPages(src, src.getPageIndices())
+        const pages = await out.copyPages(src, parsePages(pagesFor?.(e), src.getPageCount()))
         pages.forEach(p => out.addPage(p))
       } else if (kind === 'jpg' || kind === 'png') {
         await addImage(out, bytes, kind)
       } else {
         throw new Error('formato não suportado')
       }
+      const added = out.getPageCount() - before
+      if (newSheet && added % 2 === 1) {
+        const { width, height } = out.getPage(out.getPageCount() - 1).getSize()
+        out.addPage([width, height])
+        blankAtEnd = true
+      } else blankAtEnd = false
       count++
     } catch {
       failed.push(e)
     }
     onProgress?.(++done, entries.length)
   }
-  return { pdf: count ? await out.save() : null, count, failed, withoutFiles }
+  if (blankAtEnd) out.removePage(out.getPageCount() - 1)
+  return { pdf: count ? await out.save() : null, pages: out.getPageCount(), count, failed, withoutFiles }
 }
 
 // Conversão no navegador (WEBP/HEIC → JPG) através de um canvas.

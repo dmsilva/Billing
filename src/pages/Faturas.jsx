@@ -15,6 +15,7 @@ import { BULK_ACTIONS, bulkPatch, matchesInvoice } from '../lib/invoiceBulk'
 import { openDroppedInvoices } from '../components/ArrastarFaturas'
 import { ACCEPTED, downloadStoredFile } from '../data/files'
 import { buildInvoicesZip } from '../lib/zipFaturas'
+import ImprimirFaturas from '../components/ImprimirFaturas'
 
 const INVOICE_SELECT = '*, invoice_files(id, nome_ficheiro, mime, storage_path, tamanho, created_at)'
 
@@ -47,6 +48,7 @@ export default function Faturas() {
   const [paying, setPaying] = useState(null)
   const [zipping, setZipping] = useState(null)
   const [exporting, setExporting] = useState(false)
+  const [printing, setPrinting] = useState(null)
 
   const base = useMemo(() => invoiceRows.filter(r => (!month || monthOf(r.data) === month) && (!origem || (origem === 'rececao') === (r.source.origem === 'rececao')) && matchesInvoice(r, q)), [invoiceRows, month, origem, q])
   const counts = useMemo(() => Object.fromEntries(Object.entries(TABS).map(([k, t]) => [k, base.filter(t.test).length])), [base])
@@ -221,10 +223,13 @@ export default function Faturas() {
           <div className="actions">
             <button type="button" className="primary" onClick={() => exportFiles('pdf')}>Todas juntas num só PDF</button>
             <button type="button" className="secondary" onClick={() => exportFiles('zip')}>Separadas (ZIP)</button>
+            <button type="button" className="secondary" onClick={() => { setExporting(false); setPrinting((chosen.length ? chosen : rows).filter(r => r.source.invoice_files?.length)) }}>🖨 Para imprimir (escolher páginas)</button>
           </div>
           <p className="muted small">No PDF único, as fotos passam a páginas A4, por ordem de data. No ZIP, cada fatura fica num ficheiro com data, fornecedor e valor no nome, mais uma lista em Excel (CSV).</p>
         </Modal>
       )}
+      {printing && <ImprimirFaturas items={printing.map(r => ({ id: r.id, names: [r.fornecedor] }))} onClose={() => setPrinting(null)}
+        build={({ pagesById, newSheet, onProgress }) => import('../lib/pdfUnico').then(m => m.buildMergedPdf(printing, downloadStoredFile, { onProgress, newSheet, toJpeg: m.browserToJpeg, pagesFor: e => pagesById[e.row.id] }))} />}
       {paying && <PayModal invoices={paying} total={sumBy(paying, i => i.valor)} transactions={bank_transactions} payments={invoice_payments} allInvoices={invoices}
         prepare={prepareUnpaid} rollback={rollbackUnpaid}
         onClose={() => setPaying(null)} onDone={() => { setSelected(new Set()); reload('invoices'); reload('invoice_payments') }} />}

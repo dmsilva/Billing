@@ -11,6 +11,7 @@ import { formatDate } from '../lib/dates'
 import { euro } from '../lib/money'
 import { downloadText } from '../lib/csv'
 import { isUnclassified, ruleFor, ruleKey } from '../lib/autoInvoices'
+import { normalizePages, validPages } from '../lib/paginas'
 
 const PAGAMENTOS = [{ value: 'Por pagar', label: 'Por pagar (liquido depois)' }, { value: 'CGD', label: 'CGD (cartão / débito direto)' }, { value: 'Numerário', label: 'Numerário' }, { value: 'Airbnb', label: 'Airbnb (pago pela Airbnb)' }]
 
@@ -77,6 +78,7 @@ export default function EditarCategorias() {
 
   // Regras por fornecedor: faturas de cada regra e as que não batem certo com ela.
   const rulesTable = regrasFornecedorReady
+  const pagesColumn = regras_fornecedor.some(r => 'paginas_imprimir' in r)
   const supplierRules = useMemo(() => regras_fornecedor.map(r => {
     const hits = invoices.filter(i => i.estado !== 'Rejeitada' && ruleFor(i.fornecedor, regras_fornecedor)?.id === r.id)
     const outraCat = r.categoria_id ? hits.filter(i => i.categoria_id !== r.categoria_id) : []
@@ -177,13 +179,15 @@ export default function EditarCategorias() {
           <>
             <div className="tablewrap">
               <table className="mini-table">
-                <thead><tr><th>Fornecedor</th><th>Categoria</th><th>Pagamento</th><th className="money">Faturas</th><th>Antigas que não batem certo</th><th></th></tr></thead>
+                <thead><tr><th>Fornecedor</th><th>Categoria</th><th>Pagamento</th>{pagesColumn && <th title="Ao imprimir várias faturas num só PDF, só estas páginas (ex.: 1-2). Vazio = todas.">Páginas a imprimir</th>}<th className="money">Faturas</th><th>Antigas que não batem certo</th><th></th></tr></thead>
                 <tbody>
                   {supplierRules.length ? supplierRules.map(r => (
                     <tr key={r.id}>
                       <td>{r.fornecedor}{r.nota && <div className="muted small">{r.nota}</div>}</td>
                       <td><CategorySelect value={r.categoria_id} onChange={v => changeRule(r, { categoria_id: v })} /></td>
                       <td><Select className="editselect" value={r.pagamento || ''} onChange={v => changeRule(r, { pagamento: v || null })} options={PAGAMENTOS} placeholder="O que escolherem" /></td>
+                      {pagesColumn && <td><input key={r.paginas_imprimir || ''} defaultValue={r.paginas_imprimir || ''} placeholder="todas" style={{ width: 80 }} aria-label={`Páginas a imprimir de ${r.fornecedor}`}
+                        onBlur={e => { const v = normalizePages(e.target.value); if (!validPages(e.target.value)) { e.target.classList.add('invalid'); return toast('Escreve as páginas como 1-2, 1 ou 1,3.', 'bad') } e.target.classList.remove('invalid'); if (v !== (r.paginas_imprimir || null)) changeRule(r, { paginas_imprimir: v }) }} /></td>}
                       <td className="money">{r.hits.length}</td>
                       <td>
                         {r.outraCat.length > 0 && <ConfirmButton className="secondary small" confirmText={`Mudar ${r.outraCat.length}`} onConfirm={() => applyRule(r, r.outraCat, { categoria_id: r.categoria_id }, `“${categoriesById.get(r.categoria_id)?.nome}”`)}>{r.outraCat.length} noutra categoria</ConfirmButton>}
@@ -192,7 +196,7 @@ export default function EditarCategorias() {
                       </td>
                       <td><ConfirmButton className="secondary small" confirmText="Apagar regra" onConfirm={() => deleteRule(r)}>Apagar</ConfirmButton></td>
                     </tr>
-                  )) : <Empty colSpan={6}>Ainda não há regras por fornecedor.</Empty>}
+                  )) : <Empty colSpan={pagesColumn ? 7 : 6}>Ainda não há regras por fornecedor.</Empty>}
                 </tbody>
               </table>
             </div>
