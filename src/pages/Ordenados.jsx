@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Empty, Modal, Panel, useToast } from '../components/ui'
-import { corrigir, gerarExcel, gerarPdf, juntarAjudasCusto, lerFicheiroGuardado, lerMesesDoFicheiro, lerOrdenados, nomeMes, qtd, qtdHorario } from '../lib/ordenados'
+import { COLUNAS, corrigir, dadosDoFicheiro, gerarExcel, gerarPdf, juntarAjudasCusto, lerMesesDoFicheiro, lerOrdenados, nomeMes, qtd, qtdHorario } from '../lib/ordenados'
 import { calcularMapa, lerGuardado, mesmaPessoa } from '../lib/mapaKms'
 import { useData } from '../data/DataProvider'
 import { dataHora, deBase64, descarregar, paraBase64, XLSX_TYPE } from '../lib/ficheiros'
@@ -9,6 +9,17 @@ import { ePdf } from '../lib/horarioPdf'
 import { lerHorarioPdf } from '../data/horarioPdf'
 
 const HISTORICO = 'ordenados_envios'
+
+// Guarda um envio no histórico (Excel + PDF + resumo por funcionário).
+function guardarEnvio(dados, base, excel, pdf) {
+  return supabase.from(HISTORICO).insert({
+    mes: `${dados.ano}-${String(dados.mes).padStart(2, '0')}`,
+    nome_ficheiro: base,
+    linhas: dados.linhas.map(l => ({ codigo: l.codigo, nome: l.nome, feriados: qtd(l, 'feriados'), noites: qtd(l, 'noites'), ferias: qtd(l, 'ferias'), faltas: qtd(l, 'faltas'), ...(l.ajudCusto ? { ajudCusto: l.ajudCusto } : {}), nota: l.nota, ...(l.corrigido && Object.keys(l.corrigido).length ? { corrigido: l.corrigido } : {}) })),
+    excel_base64: paraBase64(excel),
+    pdf_base64: paraBase64(pdf),
+  }).select('id').single()
+}
 
 const resumoDias = l => (Array.isArray(l) && l.length ? `${l.join(', ')}` : '')
 
@@ -110,13 +121,7 @@ export default function Ordenados() {
     try {
       const [excel, pdf] = await Promise.all([gerarExcel(dados), gerarPdf(dados)])
       if (!guardado) {
-        const { data, error } = await supabase.from(HISTORICO).insert({
-          mes: `${dados.ano}-${String(dados.mes).padStart(2, '0')}`,
-          nome_ficheiro: base,
-          linhas: dados.linhas.map(l => ({ codigo: l.codigo, nome: l.nome, feriados: qtd(l, 'feriados'), noites: qtd(l, 'noites'), ferias: qtd(l, 'ferias'), faltas: qtd(l, 'faltas'), ...(l.ajudCusto ? { ajudCusto: l.ajudCusto } : {}), nota: l.nota, ...(l.corrigido && Object.keys(l.corrigido).length ? { corrigido: l.corrigido } : {}) })),
-          excel_base64: paraBase64(excel),
-          pdf_base64: paraBase64(pdf),
-        }).select('id').single()
+        const { data, error } = await guardarEnvio(dados, base, excel, pdf)
         if (error) toast(`O ficheiro foi gerado mas não ficou no histórico: ${error.message}`, 'bad')
         else { setGuardado(data.id); window.dispatchEvent(new Event('ordenados-historico')) }
       }
@@ -214,12 +219,12 @@ function Historico() {
   }
 
   async function ver(envio) {
-    setVendo({ envio, ficheiro: null })
+    setVendo({ envio, dados: null })
     const { data, error } = await supabase.from(HISTORICO).select('excel_base64').eq('id', envio.id).single()
     if (error) { setVendo(null); return toast(error.message, 'bad') }
     try {
-      const ficheiro = data.excel_base64 ? await lerFicheiroGuardado(deBase64(data.excel_base64)) : false
-      setVendo(v => (v?.envio.id === envio.id ? { envio, ficheiro } : v))
+      const dados = data.excel_base64 ? await dadosDoFicheiro(deBase64(data.excel_base64), envio.mes, envio.linhas) : false
+      setVendo(v => (v?.envio.id === envio.id ? { envio, dados } : v))
     } catch (e) { setVendo(null); toast(`Não consegui abrir este envio: ${e.message}`, 'bad') }
   }
 
@@ -231,7 +236,7 @@ function Historico() {
   }
 
   return (
-    <Panel title="Histórico" hint="Cada ficheiro descarregado para a contabilidade fica aqui guardado, em Excel e em PDF. Carrega em Ver para o abrir aqui e conferir antes de descarregar.">
+    <Panel title="Histórico" hint="Cada ficheiro descarregado para a contabilidade fica aqui guardado, em Excel e em PDF. Carrega em Ver para o abrir aqui, conferir e corrigir antes de descarregar.">
       {falta ? <div className="notice warn">Para guardar o histórico, executa uma vez o ficheiro supabase/10_ordenados_envios.sql no Supabase.</div> : (
         <div className="tablewrap"><table className="mini-table">
           <thead><tr><th>Data</th><th>Mês</th><th>Funcionários</th><th>Notas</th><th /></tr></thead>
@@ -253,24 +258,68 @@ function Historico() {
           )) : <Empty colSpan={5}>Ainda não descarregaste nenhum ficheiro.</Empty>}</tbody>
         </table></div>
       )}
-      {vendo && <VerEnvio {...vendo} onClose={() => setVendo(null)} onBaixar={tipo => baixar(vendo.envio, tipo)} />}
+      {vendo && <VerEnvio key={vendo.envio.id} {...vendo} onClose={() => setVendo(null)} onBaixar={tipo => baixar(vendo.envio, tipo)} />}
     </Panel>
   )
 }
 
-// Campo corrigível de cada coluna do ficheiro (para pintar a amarelo o que foi corrigido à mão).
-const CORRIGIVEIS = { feriado: 'feriados', noites: 'noites', ferias: 'ferias' }
-const chave = t => String(t).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z]/g, '')
+// Janela "Ver": mostra o envio tal como está no ficheiro e deixa corrigir antes de descarregar.
+// Com alterações, os ficheiros são gerados de novo e ficam no histórico como um envio novo (o original não muda).
+const EDITAVEIS = {
+  vencimento: 'euro', admissao: 'texto', ajudCusto: 'euro', feriados: 'inteiro', noites: 'inteiro', ferias: 'inteiro', nota: 'texto',
+}
+const CAMPO_DA_COLUNA = { 'Venc.': 'vencimento', Data: 'admissao', 'Ajud. Custo': 'ajudCusto', Feriado: 'feriados', Noites: 'noites', 'Férias': 'ferias', Notas: 'nota' }
+const amarelo = { background: '#fff6d6', borderColor: '#f0d995', fontWeight: 700 }
 
-function VerEnvio({ envio, ficheiro, onClose, onBaixar }) {
+function VerEnvio({ envio, dados: inicial, onClose, onBaixar }) {
+  const toast = useToast()
+  const [dados, setDados] = useState(inicial)
+  const [mudou, setMudou] = useState(false)
+  const [guardado, setGuardado] = useState(false)
+  const [busy, setBusy] = useState(false)
+  useEffect(() => { setDados(inicial); setMudou(false); setGuardado(false) }, [inicial])
   const mes = nomeMes(Number(envio.mes.slice(0, 4)), Number(envio.mes.slice(5, 7)))
-  const corrigidos = envio.linhas.some(l => l.corrigido && Object.keys(l.corrigido).length)
+
+  function mudar(k, campo, texto) {
+    const tipo = EDITAVEIS[campo]
+    let v = texto
+    if (tipo === 'inteiro') v = String(texto).trim() === '' ? 0 : Math.max(0, Math.round(Number(String(texto).replace(',', '.')) || 0))
+    if (tipo === 'euro') v = String(texto).trim() === '' ? null : Math.max(0, Number(String(texto).replace(',', '.')) || 0)
+    setDados(d => ({ ...d, linhas: d.linhas.map((l, i) => (i === k ? { ...l, [campo]: v, editado: { ...(l.editado || {}), [campo]: true } } : l)) }))
+    setMudou(true); setGuardado(false)
+  }
+
+  async function baixarEditado(tipo) {
+    setBusy(true)
+    try {
+      // O que foi mudado aqui fica marcado como corrigido à mão no histórico.
+      const final = { ...dados, linhas: dados.linhas.map(l => {
+        const corrigido = { ...(l.corrigidoAntes || {}) }
+        for (const c of ['feriados', 'noites', 'ferias']) if (l.editado?.[c]) corrigido[c] = l[c]
+        return { ...l, corrigido }
+      }) }
+      const base = envio.nome_ficheiro
+      const [excel, pdf] = await Promise.all([gerarExcel(final), gerarPdf(final)])
+      if (!guardado) {
+        const { error } = await guardarEnvio(final, base, excel, pdf)
+        if (error) toast(`O ficheiro foi gerado mas não ficou no histórico: ${error.message}`, 'bad')
+        else { setGuardado(true); window.dispatchEvent(new Event('ordenados-historico')) }
+      }
+      if (tipo === 'pdf') descarregar(pdf, `${base}.pdf`, 'application/pdf')
+      else descarregar(excel, `${base}.xlsx`, XLSX_TYPE)
+    } catch (e) { toast(e.message, 'bad') }
+    setBusy(false)
+  }
+
+  const baixar = tipo => (mudou ? baixarEditado(tipo) : onBaixar(tipo))
+  const marcado = (l, campo) => l.editado?.[campo] || l.corrigidoAntes?.[campo] !== undefined
+
   return (
     <Modal title={`Ordenados de ${mes}`} onClose={onClose} wide>
-      <p className="muted small" style={{ marginTop: 0 }}>Descarregado a {dataHora(envio.created_at)}. É isto que está no ficheiro: confere antes de enviar à contabilidade.</p>
-      {ficheiro === null ? <div className="emptybox">A abrir…</div> : ficheiro === false ? (
+      <p className="muted small" style={{ marginTop: 0 }}>Descarregado a {dataHora(envio.created_at)}. É isto que está no ficheiro: confere e corrige o que for preciso antes de descarregar.</p>
+      {dados === null ? <div className="emptybox">A abrir…</div> : dados === false ? (
         <>
-          <div className="notice warn">Este envio não tem o Excel guardado. Mostro o resumo que ficou no histórico.</div>
+          <div className="notice warn">Este envio não tem o Excel guardado, por isso não dá para corrigir aqui. Mostro o resumo que ficou no histórico.</div>
           <div className="tablewrap"><table className="mini-table">
             <thead><tr><th>Código</th><th>Nome</th><th className="money">Feriados</th><th className="money">Noites</th><th className="money">Férias</th><th>Notas</th></tr></thead>
             <tbody>{envio.linhas.map((l, k) => (
@@ -280,27 +329,39 @@ function VerEnvio({ envio, ficheiro, onClose, onBaixar }) {
         </>
       ) : (
         <>
-          {ficheiro.titulo && <div style={{ fontWeight: 700 }}>{ficheiro.titulo}</div>}
-          {corrigidos && <div className="notice">Os números a amarelo foram corrigidos à mão (diferentes do horário).</div>}
+          {dados.empresa && <div style={{ fontWeight: 700 }}>{dados.empresa}</div>}
+          <div className="notice">Podes mudar os valores diretamente na tabela. Os números a amarelo foram corrigidos à mão.{mudou ? ' Ao descarregar, a versão corrigida fica guardada no histórico como um envio novo; o original não muda.' : ''}</div>
+          {guardado && <div className="notice ok">Versão corrigida guardada no histórico.</div>}
           <div className="tablewrap"><table className="mini-table">
             <thead>
-              <tr>{ficheiro.cima.map((c, i) => <th key={i} className="muted small" style={{ textAlign: 'center' }}>{c}</th>)}</tr>
-              <tr>{ficheiro.cabecalho.map((c, i) => <th key={i} style={{ textAlign: i === 1 || chave(c) === 'notas' ? 'left' : 'center' }}>{c}</th>)}</tr>
+              <tr>{COLUNAS.map((c, i) => <th key={i} className="muted small" style={{ textAlign: 'center' }}>{c.cima || (c.codigo ? dados.codigos[c.codigo] ?? '' : '')}</th>)}</tr>
+              <tr>{COLUNAS.map((c, i) => <th key={i} style={{ textAlign: c.esquerda ? 'left' : 'center' }}>{c.titulo}</th>)}</tr>
             </thead>
-            <tbody>{ficheiro.linhas.map((l, k) => (
-              <tr key={k}>{l.map((v, i) => {
-                const campo = CORRIGIVEIS[chave(ficheiro.cabecalho[i])]
-                const mudou = campo && envio.linhas[k]?.corrigido?.[campo] !== undefined
-                const texto = i === 1 || chave(ficheiro.cabecalho[i]) === 'notas'
-                return <td key={i} style={{ textAlign: texto ? 'left' : 'center', whiteSpace: texto && i !== 1 ? 'normal' : 'nowrap', ...(texto && i !== 1 ? { minWidth: 240 } : {}), ...(mudou ? { background: '#fff6d6', fontWeight: 700 } : {}) }}>{v}</td>
+            <tbody>{dados.linhas.map((l, k) => (
+              <tr key={k}>{COLUNAS.map((c, i) => {
+                const campo = CAMPO_DA_COLUNA[c.titulo]
+                if (!campo) return <td key={i} style={{ textAlign: c.esquerda ? 'left' : 'center', whiteSpace: 'nowrap' }}>{c.titulo === 'Codigo' ? l.codigo ?? '' : c.titulo === 'Nome' ? l.nome : ''}</td>
+                const tipo = EDITAVEIS[campo]
+                const v = l[campo]
+                const estilo = marcado(l, campo) ? amarelo : {}
+                if (tipo === 'texto') return (
+                  <td key={i}><input value={v ?? ''} onChange={e => mudar(k, campo, e.target.value)} aria-label={`${c.titulo} de ${l.nome}`}
+                    placeholder={campo === 'nota' ? 'Sem notas' : ''} style={{ width: '100%', height: 34, minWidth: campo === 'nota' ? 240 : 96, ...estilo }} /></td>
+                )
+                return (
+                  <td key={i} style={{ textAlign: 'center' }}><input type="number" min="0" step={tipo === 'euro' ? '0.01' : '1'} inputMode={tipo === 'euro' ? 'decimal' : 'numeric'}
+                    value={v === null || v === undefined || v === 0 ? '' : v} placeholder={tipo === 'euro' ? '' : '0'} onChange={e => mudar(k, campo, e.target.value)}
+                    aria-label={`${c.titulo} de ${l.nome}`} style={{ width: tipo === 'euro' ? 96 : 60, minWidth: tipo === 'euro' ? 96 : 60, height: 34, textAlign: 'right', ...estilo }} /></td>
+                )
               })}</tr>
             ))}</tbody>
           </table></div>
         </>
       )}
       <div className="actions" style={{ marginTop: 12, justifyContent: 'flex-end' }}>
-        <button className="primary" onClick={() => onBaixar('xlsx')}>Descarregar Excel</button>
-        <button className="secondary" onClick={() => onBaixar('pdf')}>Descarregar PDF</button>
+        {mudou && <button className="link-btn" disabled={busy} onClick={() => { setDados(inicial); setMudou(false); setGuardado(false) }}>Desfazer alterações</button>}
+        <button className="primary" disabled={busy || dados === null} onClick={() => baixar('xlsx')}>{mudou ? 'Descarregar Excel corrigido' : 'Descarregar Excel'}</button>
+        <button className="secondary" disabled={busy || dados === null} onClick={() => baixar('pdf')}>{mudou ? 'Descarregar PDF corrigido' : 'Descarregar PDF'}</button>
         <button className="link-btn" onClick={onClose}>Fechar</button>
       </div>
     </Modal>
