@@ -138,3 +138,20 @@ describe('ordenados para a contabilidade', () => {
     expect(casarNome('Mel', nomes)).toBeUndefined()
   })
 })
+
+describe('ver um envio do histórico', () => {
+  it('lê o Excel guardado com os mesmos números do ficheiro', async () => {
+    const { lerFicheiroGuardado } = await import('../src/lib/ordenados.js')
+    const d = await lerOrdenados(await horario(), await ordenados(), 2026, 10)
+    d.linhas[0].nota = 'Falta justificada a 9/10'
+    const f = await lerFicheiroGuardado(new Uint8Array(await gerarExcel(d)))
+    expect(f.subtitulo).toBe('Ordenados de Outubro 2026')
+    expect(f.cabecalho).toEqual(['Codigo', 'Nome', 'Venc.', 'Data', 'Ajud. Custo', 'Feriado', 'Noites', 'Bx. Médica', 'Bx. Parentalid.', 'Bx. Seguro', 'Férias', 'Notas', 'IRS'])
+    expect(f.cima.slice(3, 10)).toEqual(['Admissão', '130', '126', '181', '416', '413', '417'])
+    expect(f.linhas).toHaveLength(d.linhas.length)
+    expect(f.linhas[0].slice(0, 2)).toEqual(['27', 'Galina Sabaeva'])
+    expect(f.linhas[0][10]).toBe('2')
+    expect(f.linhas[0][11]).toBe('Falta justificada a 9/10')
+    expect(f.linhas[0][2]).toMatch(/€$/)
+  })
+})

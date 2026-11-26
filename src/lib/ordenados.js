@@ -377,3 +377,29 @@ export function juntarAjudasCusto(linhas, recibos, mesma) {
     return r ? { ...l, ajudCusto: r.total, ajudCustoDoMapa: r.total } : l
   })
 }
+
+// Lê um Excel guardado no histórico para o mostrar na app tal como vai no ficheiro.
+// Devolve { titulo, subtitulo, cima, cabecalho, linhas } com os valores já em texto.
+const textoCelula = cell => {
+  let v = cell.value
+  if (v && typeof v === 'object' && !(v instanceof Date)) v = v.result ?? (v.richText ? v.richText.map(t => t.text).join('') : v.text ?? null)
+  if (v === null || v === undefined) return ''
+  if (v instanceof Date) return v.toLocaleDateString('pt-PT', { timeZone: 'UTC' })
+  if (typeof v === 'number' && String(cell.numFmt || '').includes('€')) return fmtEuro(v)
+  return String(v)
+}
+export async function lerFicheiroGuardado(bytes) {
+  const { default: ExcelJS } = await import('exceljs')
+  const wb = new ExcelJS.Workbook()
+  await wb.xlsx.load(bytes)
+  const ws = wb.worksheets[0]
+  if (!ws) throw new Error('O Excel guardado está vazio.')
+  const n = ws.columnCount
+  const linha = r => Array.from({ length: n }, (_, i) => textoCelula(ws.getCell(r, i + 1)))
+  const linhas = []
+  for (let r = 5; r <= ws.rowCount; r++) {
+    const l = linha(r)
+    if (l.some(v => v !== '')) linhas.push(l)
+  }
+  return { titulo: textoCelula(ws.getCell(1, 1)), subtitulo: textoCelula(ws.getCell(2, 1)), cima: linha(3), cabecalho: linha(4), linhas }
+}

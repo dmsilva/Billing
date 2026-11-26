@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Empty, Panel, useToast } from '../components/ui'
-import { corrigir, gerarExcel, gerarPdf, juntarAjudasCusto, lerMesesDoFicheiro, lerOrdenados, nomeMes, qtd, qtdHorario } from '../lib/ordenados'
+import { Empty, Modal, Panel, useToast } from '../components/ui'
+import { corrigir, gerarExcel, gerarPdf, juntarAjudasCusto, lerFicheiroGuardado, lerMesesDoFicheiro, lerOrdenados, nomeMes, qtd, qtdHorario } from '../lib/ordenados'
 import { calcularMapa, lerGuardado, mesmaPessoa } from '../lib/mapaKms'
 import { useData } from '../data/DataProvider'
 import { dataHora, deBase64, descarregar, paraBase64, XLSX_TYPE } from '../lib/ficheiros'
@@ -189,6 +189,7 @@ function Historico() {
   const [envios, setEnvios] = useState(null)
   const [falta, setFalta] = useState(false)
   const [apagar, setApagar] = useState(null)
+  const [vendo, setVendo] = useState(null)
 
   const carregar = useCallback(async () => {
     const { data, error } = await supabase.from(HISTORICO).select('id, mes, nome_ficheiro, linhas, created_at').order('created_at', { ascending: false }).limit(100)
@@ -212,6 +213,16 @@ function Historico() {
     else descarregar(deBase64(data[coluna]), `${envio.nome_ficheiro}.xlsx`, XLSX_TYPE)
   }
 
+  async function ver(envio) {
+    setVendo({ envio, ficheiro: null })
+    const { data, error } = await supabase.from(HISTORICO).select('excel_base64').eq('id', envio.id).single()
+    if (error) { setVendo(null); return toast(error.message, 'bad') }
+    try {
+      const ficheiro = data.excel_base64 ? await lerFicheiroGuardado(deBase64(data.excel_base64)) : false
+      setVendo(v => (v?.envio.id === envio.id ? { envio, ficheiro } : v))
+    } catch (e) { setVendo(null); toast(`Não consegui abrir este envio: ${e.message}`, 'bad') }
+  }
+
   async function remover(envio) {
     const { error } = await supabase.from(HISTORICO).delete().eq('id', envio.id)
     if (error) return toast(error.message, 'bad')
@@ -220,7 +231,7 @@ function Historico() {
   }
 
   return (
-    <Panel title="Histórico" hint="Cada ficheiro descarregado para a contabilidade fica aqui guardado, em Excel e em PDF.">
+    <Panel title="Histórico" hint="Cada ficheiro descarregado para a contabilidade fica aqui guardado, em Excel e em PDF. Carrega em Ver para o abrir aqui e conferir antes de descarregar.">
       {falta ? <div className="notice warn">Para guardar o histórico, executa uma vez o ficheiro supabase/10_ordenados_envios.sql no Supabase.</div> : (
         <div className="tablewrap"><table className="mini-table">
           <thead><tr><th>Data</th><th>Mês</th><th>Funcionários</th><th>Notas</th><th /></tr></thead>
@@ -231,6 +242,7 @@ function Historico() {
               <td>{e.linhas.length}</td>
               <td className="muted small">{e.linhas.filter(l => l.nota).map(l => `${l.nome}: ${l.nota}`).join(' · ')}</td>
               <td style={{ whiteSpace: 'nowrap' }}>
+                <button className="primary small" onClick={() => ver(e)}>Ver</button>{' '}
                 <button className="secondary small" onClick={() => baixar(e, 'xlsx')}>Excel</button>{' '}
                 <button className="secondary small" onClick={() => baixar(e, 'pdf')}>PDF</button>{' '}
                 {apagar === e.id
@@ -241,6 +253,56 @@ function Historico() {
           )) : <Empty colSpan={5}>Ainda não descarregaste nenhum ficheiro.</Empty>}</tbody>
         </table></div>
       )}
+      {vendo && <VerEnvio {...vendo} onClose={() => setVendo(null)} onBaixar={tipo => baixar(vendo.envio, tipo)} />}
     </Panel>
+  )
+}
+
+// Campo corrigível de cada coluna do ficheiro (para pintar a amarelo o que foi corrigido à mão).
+const CORRIGIVEIS = { feriado: 'feriados', noites: 'noites', ferias: 'ferias' }
+const chave = t => String(t).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z]/g, '')
+
+function VerEnvio({ envio, ficheiro, onClose, onBaixar }) {
+  const mes = nomeMes(Number(envio.mes.slice(0, 4)), Number(envio.mes.slice(5, 7)))
+  const corrigidos = envio.linhas.some(l => l.corrigido && Object.keys(l.corrigido).length)
+  return (
+    <Modal title={`Ordenados de ${mes}`} onClose={onClose} wide>
+      <p className="muted small" style={{ marginTop: 0 }}>Descarregado a {dataHora(envio.created_at)}. É isto que está no ficheiro: confere antes de enviar à contabilidade.</p>
+      {ficheiro === null ? <div className="emptybox">A abrir…</div> : ficheiro === false ? (
+        <>
+          <div className="notice warn">Este envio não tem o Excel guardado. Mostro o resumo que ficou no histórico.</div>
+          <div className="tablewrap"><table className="mini-table">
+            <thead><tr><th>Código</th><th>Nome</th><th className="money">Feriados</th><th className="money">Noites</th><th className="money">Férias</th><th>Notas</th></tr></thead>
+            <tbody>{envio.linhas.map((l, k) => (
+              <tr key={k}><td>{l.codigo ?? ''}</td><td>{l.nome}</td><td className="money">{l.feriados || ''}</td><td className="money">{l.noites || ''}</td><td className="money">{l.ferias || ''}</td><td>{l.nota}</td></tr>
+            ))}</tbody>
+          </table></div>
+        </>
+      ) : (
+        <>
+          {ficheiro.titulo && <div style={{ fontWeight: 700 }}>{ficheiro.titulo}</div>}
+          {corrigidos && <div className="notice">Os números a amarelo foram corrigidos à mão (diferentes do horário).</div>}
+          <div className="tablewrap"><table className="mini-table">
+            <thead>
+              <tr>{ficheiro.cima.map((c, i) => <th key={i} className="muted small" style={{ textAlign: 'center' }}>{c}</th>)}</tr>
+              <tr>{ficheiro.cabecalho.map((c, i) => <th key={i} style={{ textAlign: i === 1 || chave(c) === 'notas' ? 'left' : 'center' }}>{c}</th>)}</tr>
+            </thead>
+            <tbody>{ficheiro.linhas.map((l, k) => (
+              <tr key={k}>{l.map((v, i) => {
+                const campo = CORRIGIVEIS[chave(ficheiro.cabecalho[i])]
+                const mudou = campo && envio.linhas[k]?.corrigido?.[campo] !== undefined
+                const texto = i === 1 || chave(ficheiro.cabecalho[i]) === 'notas'
+                return <td key={i} style={{ textAlign: texto ? 'left' : 'center', whiteSpace: texto && i !== 1 ? 'normal' : 'nowrap', ...(texto && i !== 1 ? { minWidth: 240 } : {}), ...(mudou ? { background: '#fff6d6', fontWeight: 700 } : {}) }}>{v}</td>
+              })}</tr>
+            ))}</tbody>
+          </table></div>
+        </>
+      )}
+      <div className="actions" style={{ marginTop: 12, justifyContent: 'flex-end' }}>
+        <button className="primary" onClick={() => onBaixar('xlsx')}>Descarregar Excel</button>
+        <button className="secondary" onClick={() => onBaixar('pdf')}>Descarregar PDF</button>
+        <button className="link-btn" onClick={onClose}>Fechar</button>
+      </div>
+    </Modal>
   )
 }
