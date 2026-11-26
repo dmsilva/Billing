@@ -18,6 +18,7 @@ export const READING_SCHEMA = {
     iva: { type: ['number', 'null'], description: 'Total de IVA, em euros' },
     pagamento: { type: 'string', enum: ['numerario', 'cartao', 'transferencia', 'desconhecido'], description: 'Como foi pago, se o documento o indicar' },
     cliente: { type: ['string', 'null'], description: 'Nome e morada do cliente (adquirente) tal como aparecem no documento' },
+    nif_cliente: { type: ['string', 'null'], description: 'NIF do cliente (adquirente), só dígitos; null se não tiver ou for consumidor final' },
     descricao: { type: ['string', 'null'], description: 'Resumo curto, em português, do que foi comprado (máx. 80 caracteres)' },
     tipo_documento: { type: 'string', enum: TIPOS_DOCUMENTO, description: 'Tipo de documento' },
     linhas: {
@@ -38,7 +39,7 @@ export const READING_SCHEMA = {
       },
     },
   },
-  required: ['fornecedor', 'nif', 'data', 'documento', 'valor_total', 'iva', 'pagamento', 'cliente', 'descricao', 'tipo_documento', 'linhas'],
+  required: ['fornecedor', 'nif', 'data', 'documento', 'valor_total', 'iva', 'pagamento', 'cliente', 'nif_cliente', 'descricao', 'tipo_documento', 'linhas'],
   additionalProperties: false,
 }
 
@@ -51,6 +52,7 @@ Extrai os dados do documento. Usa null para tudo o que não consigas ler com seg
 - iva: o total de IVA do documento.
 - pagamento: numerario se diz numerário/dinheiro; cartao se diz multibanco, MB, cartão, Visa, TPA; transferencia se diz transferência/MB Way/débito direto; senão desconhecido.
 - cliente: o nome e a morada do cliente/adquirente, se existirem.
+- nif_cliente: o NIF do cliente/adquirente (contribuinte do cliente), se estiver no documento; null se não tiver ou disser consumidor final.
 - descricao: um resumo curto do que foi comprado, por exemplo "Produtos de limpeza e pão".
 - linhas: todos os artigos comprados, um por linha do documento.
   - produto: a descrição como aparece (ex.: "MANTEIGA MIMOSA C/SAL 250G").
@@ -150,6 +152,7 @@ export function normalizeReading(raw) {
     iva: cleanAmount(r.iva),
     pagamento: ['numerario', 'cartao', 'transferencia'].includes(r.pagamento) ? r.pagamento : null,
     cliente: cleanText(r.cliente, 200),
+    nif_cliente: cleanNif(r.nif_cliente) === '999999990' ? null : cleanNif(r.nif_cliente),
     descricao: cleanText(r.descricao, 120),
     tipo_documento: TIPOS_DOCUMENTO.includes(r.tipo_documento) && r.tipo_documento !== 'outro' ? r.tipo_documento : null,
     linhas: normalizeLines(r.linhas),
@@ -194,8 +197,11 @@ export function applyReading(form, reading, today, { properties = [], touched = 
     filled.push('nif')
   }
   fill('descricao', r.descricao)
-  if (r.pagamento && !touched.pagamento) {
-    const pagamento = r.pagamento === 'numerario' ? 'Numerário' : 'CGD'
+  if (r.tipo_documento === 'nota_credito' && !touched.nota_credito && !form.nota_credito) { next.nota_credito = true; filled.push('nota_credito') }
+  // Documentos da Airbnb: o pagamento é sempre "Airbnb" (pedido do Daniel, 13/11/2026).
+  const airbnb = /airbnb/i.test(String(next.fornecedor || ''))
+  if ((r.pagamento || airbnb) && !touched.pagamento) {
+    const pagamento = airbnb ? 'Airbnb' : r.pagamento === 'numerario' ? 'Numerário' : 'CGD'
     if (pagamento !== form.pagamento) { next.pagamento = pagamento; filled.push('pagamento') }
   }
   const imovel = matchProperty(r.cliente, properties)

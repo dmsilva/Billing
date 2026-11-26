@@ -7,7 +7,7 @@ const QR = 'A:500829993*B:999999990*C:PT*D:FS*E:N*F:20261103*G:FS 0123/45678*H:J
 describe('código QR AT', () => {
   it('lê os campos da fatura e soma o IVA de cada taxa', () => {
     expect(parseQrAT(QR)).toEqual({
-      nif: '500829993', nif_cliente: null, tipo: 'FS', tipo_nome: 'Fatura simplificada', anulado: false,
+      nif: '500829993', nif_cliente: null, consumidor_final: true, tipo: 'FS', tipo_nome: 'Fatura simplificada', anulado: false,
       data: '2026-11-03', documento: 'FS 0123/45678', atcud: 'JJ37MKD9-45678', valor_total: 35.2, iva: 5.2,
     })
   })
@@ -76,6 +76,8 @@ describe('faturas repetidas', () => {
   const base = { fornecedor: 'Pingo Doce', nif: '500829993', data: '2026-10-01', documento: 'fs 0123-40000', valor: '20,00', atcud: '' }
   it('mesmo nº de documento do mesmo fornecedor é repetida', () => {
     expect(docKey('FS 0123/40000')).toBe(docKey('fs0123-40000'))
+    expect(docKey('FS 0451/22334')).toBe(docKey('FS 451/22334'))
+    expect(docKey('FT 2026A/10')).not.toBe(docKey('FT 2026A/100'))
     expect(findInvoiceDuplicates(base, invoices)).toEqual([{ certeza: 'certo', invoice: invoices[0] }])
   })
   it('mesmo ATCUD é repetida mesmo com outro nº', () => {
@@ -101,5 +103,30 @@ describe('gravar', () => {
   it('recusa valor inválido ou falta de data', () => {
     expect(draftToInvoice({ ...d, valor: 'abc' }, {}).error).toMatch(/valor/)
     expect(draftToInvoice({ ...d, data: '' }, {}).error).toMatch(/data/)
+  })
+})
+
+describe('notas de crédito', () => {
+  it('ficam com valor e IVA negativos (anulação)', () => {
+    const d = buildDraft({ leitura: { fornecedor: 'Airbnb Ireland UC', tipo_documento: 'nota_credito', valor_total: 12.5, iva: 2.34, data: '2026-09-10' }, today: '2026-11-13' })
+    expect(d.valor).toBe('-12,50')
+    expect(d.iva).toBe('-2,34')
+    expect(d.avisos.join(' ')).toMatch(/nota de crédito/)
+  })
+})
+
+describe('NIF da empresa nas faturas do email', () => {
+  it('reconhece a empresa, outro cliente e consumidor final', async () => {
+    const { buildDraft, clienteEmpresa } = await import('../src/lib/invoiceDrop.js')
+    const { parseQrAT } = await import('../src/lib/qrAT.js')
+    const qrEmpresa = parseQrAT('A:500829993*B:513102914*C:PT*D:FS*E:N*F:20261103*G:FS 1/2*H:0*N:1.00*O:10.00')
+    const qrOutro = parseQrAT('A:500829993*B:123456789*C:PT*D:FS*E:N*F:20261103*G:FS 1/3*H:0*N:1.00*O:10.00')
+    const qrFinal = parseQrAT('A:500829993*B:999999990*C:PT*D:FS*E:N*F:20261103*G:FS 1/4*H:0*N:1.00*O:10.00')
+    expect(clienteEmpresa(buildDraft({ qr: qrEmpresa, leitura: null }))).toBe('sim')
+    expect(clienteEmpresa(buildDraft({ qr: qrOutro, leitura: null }))).toBe('nao')
+    expect(clienteEmpresa(buildDraft({ qr: qrFinal, leitura: null }))).toBe('nao')
+    // Sem QR: vale o NIF lido; sem nada, fica por saber.
+    expect(clienteEmpresa(buildDraft({ qr: null, leitura: { nif_cliente: '513102914' } }))).toBe('sim')
+    expect(clienteEmpresa(buildDraft({ qr: null, leitura: { fornecedor: 'Pingo Doce' } }))).toBe('?')
   })
 })

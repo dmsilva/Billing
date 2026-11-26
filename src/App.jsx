@@ -27,7 +27,9 @@ const Conferencia = lazy(() => import('./pages/Conferencia'))
 const Utilizadores = lazy(() => import('./pages/Utilizadores'))
 const Configuracao = lazy(() => import('./pages/Configuracao'))
 const Ordenados = lazy(() => import('./pages/Ordenados'))
+const MapaKms = lazy(() => import('./pages/MapaKms'))
 const SalariosBanco = lazy(() => import('./pages/SalariosBanco'))
+const Dividas = lazy(() => import('./pages/Dividas'))
 const Perguntar = lazy(() => import('./pages/Perguntar'))
 const Saft = lazy(() => import('./pages/Saft'))
 const MapaIva = lazy(() => import('./pages/MapaIva'))
@@ -100,7 +102,9 @@ function Gate() {
             <Route path="caixas-rececao" element={<CaixasRececao />} />
             <Route path="conferencia" element={<Conferencia />} />
             <Route path="ordenados" element={<Ordenados />} />
+            <Route path="mapa-kms" element={<MapaKms />} />
             <Route path="salarios-banco" element={<SalariosBanco />} />
+            <Route path="dividas" element={<Dividas />} />
             <Route path="utilizadores" element={<Utilizadores />} />
             <Route path="configuracao" element={<Configuracao />} />
             <Route path="*" element={<Navigate to="/" replace />} />

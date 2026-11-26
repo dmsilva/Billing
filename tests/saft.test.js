@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { deflateRawSync } from 'node:zlib'
 import { detectChannel, parseSaft, saftText } from '../src/lib/saft.js'
-import { numberingGaps, saftByMonth, saftReconcile } from '../src/lib/saftReconcile.js'
+import { numberingGaps, saftByMonth, saftMonths, saftReconcile } from '../src/lib/saftReconcile.js'
 import { monthResult } from '../src/lib/finance.js'
 
 const line = (n, desc, valor, taxa, ref = '') => `<Line><LineNumber>${n}</LineNumber><ProductCode>${desc}</ProductCode><ProductDescription>${desc}</ProductDescription>${ref ? `<References><Reference>${ref}</Reference></References>` : ''}<${ref ? 'DebitAmount' : 'CreditAmount'}>${valor}</${ref ? 'DebitAmount' : 'CreditAmount'}><Tax><TaxPercentage>${taxa}</TaxPercentage></Tax></Line>`
@@ -121,16 +121,23 @@ describe('cruzamento com a caixa e o banco', () => {
     expect(r.saltos).toEqual(['FT A/12'])
     expect(numberingGaps([{ numero: 'FT B/1' }, { numero: 'FT B/2' }])).toEqual([])
   })
-  it('o faturado do SAF-T passa a ser o faturado dos Resultados', () => {
-    const saft = saftByMonth(docs)
-    expect(saft['2026-09']).toEqual({ total: 266.4, cityTax: 12 })
-    const expenseRows = [{ kind: 'bank', data: '2026-09-10', valor: 100, pagamento: 'CGD', contaComoDespesa: true }]
-    const m = monthResult('2026-09', { closes, credits, expenseRows, saft })
+  it('o faturado do SAF-T passa a ser o faturado dos Resultados, só a partir de novembro de 2026', () => {
+    // Antes de novembro a faturação não era feita com a app: setembro fica de fora.
+    expect(saftByMonth(docs)['2026-09']).toBeUndefined()
+    expect(saftMonths(docs)).toEqual([])
+    const nov = docs.map(d => ({ ...d, data: d.data.replace('2026-09', '2026-11') }))
+    const novCloses = closes.map(c => ({ ...c, data: c.data.replace('2026-09', '2026-11') }))
+    const novCredits = credits.map(c => ({ ...c, data_mov: c.data_mov.replace('2026-09', '2026-11') }))
+    const saft = saftByMonth(nov)
+    expect(saftMonths(nov)).toEqual(['2026-11'])
+    expect(saft['2026-11']).toEqual({ total: 266.4, cityTax: 12 })
+    const expenseRows = [{ kind: 'bank', data: '2026-11-10', valor: 100, pagamento: 'CGD', contaComoDespesa: true }]
+    const m = monthResult('2026-11', { closes: novCloses, credits: novCredits, expenseRows, saft })
     expect(m.fonteFaturado).toBe('SAF-T')
     expect(m.faturado).toBe(266.4)
     expect(m.recebido).toBe(174)
     expect(m.diferencaSaft).toBe(92.4)
-    const semSaft = monthResult('2026-09', { closes, credits, expenseRows })
+    const semSaft = monthResult('2026-11', { closes: novCloses, credits: novCredits, expenseRows })
     expect(semSaft.faturado).toBe(174)
     expect(semSaft.saft).toBeNull()
   })

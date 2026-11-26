@@ -78,33 +78,49 @@ export function lerHorario(wb, ano, mes) {
   })
   if (!diaCol) throw new Error(`A folha "${ws.name}" não tem a coluna "DIA" na primeira linha.`)
 
-  const linhas = []
+  const dias = []
   for (let r = 3; r <= ws.rowCount; r++) {
     const d = valor(ws.getCell(r, diaCol))
-    if (typeof d === 'number') linhas.push({ r, dia: d })
+    if (typeof d === 'number') dias.push({ r, dia: d, feriado: ws.getRow(r).values.some(v => typeof v === 'string' && norm(v) === 'feriado') })
   }
-  if (!linhas.length) throw new Error(`A folha "${ws.name}" não tem dias.`)
+  const celula = (r, col) => {
+    const e = ws.getCell(r, col), s = ws.getCell(r, col + 1)
+    const c = cor(e)
+    return { entrada: valor(e), saida: valor(s), texto: `${texto(e)} ${texto(s)}`, cor: c === AZUL ? 'azul' : VERMELHOS.includes(c) ? 'vermelho' : '' }
+  }
+  return contarHorario({
+    folha: ws.name,
+    dias: dias.map(({ dia, feriado }) => ({ dia, feriado })),
+    funcionarios: funcionarios.map(({ col, nome }) => ({ nome, celulas: dias.map(({ r }) => celula(r, col)) })),
+  }, ano, mes)
+}
+
+// Conta feriados trabalhados, noites, férias e faltas de um horário já lido (do Excel ou do PDF).
+// grelha: { folha, dias: [{ dia, feriado }], funcionarios: [{ nome, celulas: [{ entrada, saida, texto, cor }] }] },
+// uma célula por dia, pela ordem da folha; cor 'azul' = férias, 'vermelho' = falta justificada.
+export function contarHorario(grelha, ano, mes) {
+  const linhas = grelha.dias
+  if (!linhas.length) throw new Error(`A folha "${grelha.folha}" não tem dias.`)
   // A folha começa no fim do mês anterior (ex.: 28, 29, 30, 1, 2…).
   let data = linhas[0].dia === 1 ? new Date(Date.UTC(ano, mes - 1, 1)) : new Date(Date.UTC(ano, mes - 1, 0))
   if (linhas[0].dia !== 1) data = new Date(Date.UTC(data.getUTCFullYear(), data.getUTCMonth(), linhas[0].dia))
   const fer = feriados(ano)
-  const datas = linhas.map((l, i) => ({ ...l, data: maisDias(data, i) }))
+  const datas = linhas.map((l, i) => ({ ...l, i, data: maisDias(data, i) }))
 
   return {
-    folha: ws.name,
+    folha: grelha.folha,
     mes,
-    funcionarios: funcionarios.map(({ col, nome }) => {
+    funcionarios: grelha.funcionarios.map(({ nome, celulas }) => {
       const res = { nome, feriados: [], noites: 0, diurnos: [], ferias: [], faltas: [] }
-      for (const { r, data: d } of datas) {
+      for (const { i, feriado: marcadoFeriado, data: d } of datas) {
         if (d.getUTCMonth() !== mes - 1 || d.getUTCFullYear() !== ano) continue
         const dia = d.getUTCDate()
-        const e = ws.getCell(r, col), s = ws.getCell(r, col + 1)
-        const txt = `${texto(e)} ${texto(s)}`
-        if (/\bferias\b/.test(txt) || cor(e) === AZUL) { res.ferias.push(dia); continue }
-        if (txt.includes('falta') || VERMELHOS.includes(cor(e))) { res.faltas.push(dia); continue }
-        const hi = hora(valor(e)), hf = hora(valor(s))
+        const c = celulas[i] || {}
+        const txt = norm(c.texto)
+        if (/\bferias\b/.test(txt) || c.cor === 'azul') { res.ferias.push(dia); continue }
+        if (txt.includes('falta') || c.cor === 'vermelho') { res.faltas.push(dia); continue }
+        const hi = hora(c.entrada), hf = hora(c.saida)
         if (hi === null || txt.includes('feriado')) continue // folga, feriado gozado ou vazio
-        const marcadoFeriado = ws.getRow(r).values.some(v => typeof v === 'string' && norm(v) === 'feriado')
         if (fer.has(iso(d)) || marcadoFeriado) res.feriados.push(dia)
         if (hi >= 22 && hf !== null && hf <= 8) res.noites++
         else res.diurnos.push(dia)
@@ -205,13 +221,18 @@ export function montarOrdenados(folha, horario) {
   return { linhas, semPar }
 }
 
+// ficheiroHorario: o Excel do horário, ou { grelha } quando o horário veio de um PDF (ver horarioPdf.js).
 export async function lerOrdenados(ficheiroHorario, ficheiroOrdenados, ano, mes) {
   const { default: ExcelJS } = await import('exceljs')
-  const wbH = new ExcelJS.Workbook()
-  await wbH.xlsx.load(await ficheiroHorario.arrayBuffer())
+  let horario
+  if (ficheiroHorario?.grelha) horario = contarHorario(ficheiroHorario.grelha, ano, mes)
+  else {
+    const wbH = new ExcelJS.Workbook()
+    await wbH.xlsx.load(await ficheiroHorario.arrayBuffer())
+    horario = lerHorario(wbH, ano, mes)
+  }
   const wbO = new ExcelJS.Workbook()
   await wbO.xlsx.load(await ficheiroOrdenados.arrayBuffer())
-  const horario = lerHorario(wbH, ano, mes)
   const folha = lerFolhaContabilidade(wbO)
   return { ...folha, ...montarOrdenados(folha, horario), folhaHorario: horario.folha, ano, mes }
 }
@@ -225,19 +246,39 @@ export async function lerMesesDoFicheiro(ficheiro) {
 
 export const nomeMes = (ano, mes) => `${MESES[mes - 1][0].toUpperCase()}${MESES[mes - 1].slice(1)} ${ano}`
 
+// Números de uma linha: o que o Daniel corrigiu à mão (l.corrigido) ou, senão, o que veio do horário.
+export const CAMPOS_CORRIGIVEIS = ['feriados', 'noites', 'ferias', 'faltas']
+export function qtdHorario(l, campo) {
+  const v = l[campo]
+  return Array.isArray(v) ? v.length : Number(v) || 0
+}
+export function qtd(l, campo) {
+  const c = l.corrigido?.[campo]
+  return Number.isInteger(c) && c >= 0 ? c : qtdHorario(l, campo)
+}
+
+// Corrige um número (texto vazio volta ao valor do horário).
+export function corrigir(l, campo, texto) {
+  const corrigido = { ...(l.corrigido || {}) }
+  const n = String(texto ?? '').trim() === '' ? null : Math.max(0, Math.round(Number(String(texto).replace(',', '.'))))
+  if (n === null || !Number.isFinite(n) || n === qtdHorario(l, campo)) delete corrigido[campo]
+  else corrigido[campo] = n
+  return { ...l, corrigido }
+}
+
 // Colunas do ficheiro para a contabilidade (iguais às da folha original).
 export const COLUNAS = [
   { titulo: 'Codigo', largura: 9, mm: 13, campo: 'codigo' },
   { titulo: 'Nome', largura: 38, mm: 58, campo: 'nome', esquerda: true },
   { titulo: 'Venc.', largura: 12, mm: 20, campo: 'vencimento' },
   { titulo: 'Data', cima: 'Admissão', largura: 12, mm: 19, campo: 'admissao' },
-  { titulo: 'Ajud. Custo', codigo: 'ajudCusto', largura: 11, mm: 17 },
-  { titulo: 'Feriado', codigo: 'feriado', largura: 9, mm: 14, campo: l => l.feriados.length || null },
-  { titulo: 'Noites', codigo: 'noites', largura: 9, mm: 14, campo: l => l.noites || null },
+  { titulo: 'Ajud. Custo', codigo: 'ajudCusto', largura: 11, mm: 17, campo: l => (Number(l.ajudCusto) > 0 ? Number(l.ajudCusto) : null), euro: true },
+  { titulo: 'Feriado', codigo: 'feriado', largura: 9, mm: 14, campo: l => qtd(l, 'feriados') || null },
+  { titulo: 'Noites', codigo: 'noites', largura: 9, mm: 14, campo: l => qtd(l, 'noites') || null },
   { titulo: 'Bx. Médica', codigo: 'bxMedica', largura: 11, mm: 17 },
   { titulo: 'Bx. Parentalid.', codigo: 'bxParentalidade', largura: 14, mm: 21 },
   { titulo: 'Bx. Seguro', codigo: 'bxSeguro', largura: 11, mm: 17 },
-  { titulo: 'Férias', codigo: 'ferias', largura: 9, mm: 13, campo: l => l.ferias.length || null },
+  { titulo: 'Férias', codigo: 'ferias', largura: 9, mm: 13, campo: l => qtd(l, 'ferias') || null },
   { titulo: 'Notas', largura: 45, campo: 'nota', esquerda: true },
   { titulo: 'IRS', largura: 9, mm: 11 },
 ]
@@ -282,7 +323,7 @@ export async function gerarExcel(dados) {
       const cell = row.getCell(i + 1)
       const v = valorDe(l, c)
       cell.value = v === '' || v === undefined ? null : v
-      if (c.campo === 'vencimento') cell.numFmt = '#,##0.00 "€"'
+      if (c.campo === 'vencimento' || c.euro) cell.numFmt = '#,##0.00 "€"'
       cell.alignment = { horizontal: c.esquerda ? 'left' : 'center', vertical: 'middle', wrapText: c.campo === 'nota' }
       if (c.campo === 'vencimento') cell.alignment = { horizontal: 'right', vertical: 'middle' }
       cell.border = bordas
@@ -302,7 +343,7 @@ export async function gerarPdf(dados) {
   doc.text(`Ordenados de ${nomeMes(dados.ano, dados.mes)}`, 10, 18)
   const formatar = (l, c) => {
     const v = valorDe(l, c)
-    if (c.campo === 'vencimento') return fmtEuro(v)
+    if (c.campo === 'vencimento' || c.euro) return fmtEuro(v)
     return v === null || v === undefined ? '' : String(v)
   }
   const azul = [153, 204, 255]
@@ -320,9 +361,19 @@ export async function gerarPdf(dados) {
     didParseCell: h => { if (h.section === 'body') h.cell.styles.fillColor = h.row.index % 2 ? [229, 229, 229] : [255, 255, 255] },
     columnStyles: Object.fromEntries(COLUNAS.map((c, i) => [i, {
       cellWidth: c.mm ?? 'auto',
-      halign: c.esquerda ? 'left' : c.campo === 'vencimento' ? 'right' : 'center',
+      halign: c.esquerda ? 'left' : c.campo === 'vencimento' || c.euro ? 'right' : 'center',
     }])),
     margin: { left: 10, right: 10 },
   })
   return doc.output('arraybuffer')
+}
+
+// Ajudas de custo (kms) de cada linha a partir do mapa de kms do mês (Patrícia e Joel).
+// Só preenche quem não tem já um valor escrito à mão (ajudCustoMao).
+export function juntarAjudasCusto(linhas, recibos, mesma) {
+  return linhas.map(l => {
+    if (l.ajudCustoMao) return l
+    const r = recibos.find(x => mesma(l.nome, x.nome))
+    return r ? { ...l, ajudCusto: r.total, ajudCustoDoMapa: r.total } : l
+  })
 }

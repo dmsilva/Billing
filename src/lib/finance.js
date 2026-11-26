@@ -8,7 +8,10 @@
 //  - Faturas pagas por CGD são documentos de suporte de um movimento do extrato: nunca são
 //    somadas outra vez (evita dupla contagem).
 //  - Faturas rejeitadas ou ainda sem valor não entram nos totais.
+//  - Notas de crédito ficam com valor negativo: são anulações, abatem ao total (nunca são entradas).
 //  - Faturas "Por pagar" ficam fora dos totais até serem liquidadas (passam então a CGD ou Numerário).
+//  - Faturas "Airbnb" (pagas/descontadas pela Airbnb) não saem da caixa nem da CGD: ficam registadas
+//    e visíveis, mas não somam ao numerário (a Airbnb já paga ao Chalet o valor sem comissões).
 //  - "Entradas de caixa" = Dinheiro + CV + MB + City MB dos fechos da caixa diária.
 //    City MB é a taxa turística paga em MB: entra no faturado e sai nas despesas quando se paga à
 //    Câmara (categoria "Taxa turística / CML"), por isso no resultado anula-se.
@@ -20,6 +23,13 @@ import { monthOf, monthsOfYear } from './dates.js'
 export const PAYMENT_CGD = 'CGD'
 export const PAYMENT_CASH = 'Numerário'
 export const PAYMENT_UNPAID = 'Por pagar'
+export const PAYMENT_AIRBNB = 'Airbnb'
+// Ordem em que as opções aparecem nos ecrãs.
+export const PAYMENTS = ['Numerário', 'CGD', 'Airbnb', 'Por pagar']
+// Nota de crédito = anulação: grava-se com valor (e IVA) negativo e abate às despesas.
+// Validar pede valor, exceto nas faturas pagas pela Airbnb (não somam a nada; pedido do Daniel, 13/11/2026).
+export const canValidateWithoutValue = inv => inv?.pagamento === PAYMENT_AIRBNB
+export const isCreditNote = inv => inv?.valor != null && Number(inv.valor) < 0
 export const UNCLASSIFIED = ['Por classificar', 'Outros / por classificar']
 
 export const SALARY_RE = /\bORDEN(?:ADO|ADOS|AR|OS|A)?\b|\bORDE\b|\bSAL[ÁA]RIO(?:S)?\b/i

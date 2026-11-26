@@ -11,7 +11,7 @@
 
 alter table public.invoices drop constraint if exists invoices_pagamento_check;
 alter table public.invoices add constraint invoices_pagamento_check
-  check (pagamento in ('CGD', 'Numerário', 'Por pagar'));
+  check (pagamento in ('CGD', 'Numerário', 'Por pagar', 'Airbnb'));  -- Airbnb: ver 17
 
 create table if not exists public.invoice_payments (
   id bigint generated always as identity primary key,

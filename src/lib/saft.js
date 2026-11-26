@@ -60,6 +60,11 @@ const num = (xml, tag) => Number(text(xml, tag) || 0)
 
 // ---------- Regras ----------
 
+// Primeiro mês faturado na app atual: antes disso a faturação não é comparável com a caixa e o
+// banco da app, por isso os meses anteriores não contam (nem se importam).
+export const SAFT_INICIO = '2026-11'
+export const saftContaMes = mes => String(mes || '') >= SAFT_INICIO
+
 export const CITY_TAX_RE = /city\s*tax|touristic\s*tax|tourist\s*tax|taxa\s*tur[ií]stica|taxa\s*municipal\s*tur/i
 const CHANNELS = [['Airbnb', /airbnb/i], ['Expedia', /expedia|travelscape|hotels\.com/i], ['Booking', /booking/i], ['Hostelworld', /hostelworld/i], ['Grupo', /\bgrupo\b|\bgroup\b/i]]
 

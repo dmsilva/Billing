@@ -25,3 +25,10 @@ describe('alterações em lote nas faturas', () => {
     expect(matchesInvoice(r, 'lidl')).toBe(false)
   })
 })
+
+describe('validar faturas da Airbnb', () => {
+  it('valida mesmo sem valor quando o pagamento é Airbnb', () => {
+    expect(bulkPatch({ estado: 'Por validar', valor: null, pagamento: 'Airbnb' }, 'validar', { userId: 'u' }).patch?.estado).toBe('Validada')
+    expect(bulkPatch({ estado: 'Por validar', valor: null, pagamento: 'Numerário' }, 'validar', { userId: 'u' }).skip).toBe('sem valor')
+  })
+})

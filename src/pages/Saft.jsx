@@ -3,7 +3,7 @@ import { useData } from '../data/DataProvider'
 import { useFilters } from '../data/FiltersProvider'
 import { supabase } from '../supabase'
 import { Badge, Empty, Kpi, Modal, Panel, Select, useToast } from '../components/ui'
-import { MEIOS, readSaftFile } from '../lib/saft'
+import { MEIOS, readSaftFile, saftContaMes } from '../lib/saft'
 import { saftMonths, saftReconcile } from '../lib/saftReconcile'
 import { euro } from '../lib/money'
 import { formatDate, formatDateTime, monthLabel } from '../lib/dates'
@@ -43,7 +43,7 @@ export default function Saft() {
 
       {!r ? (
         <Panel title="Ainda não há SAF-T">
-          <p>A app vai buscar o SAF-T ao InvoiceXpress todos os dias (do dia 1 ao 5 fecha o mês anterior). Também podes carregar em <strong>Ir buscar ao InvoiceXpress</strong> para um mês à escolha, ou importar o ficheiro .xml/.zip exportado à mão. A app passa a usar o SAF-T como o faturado oficial e mostra o que não bate com a caixa diária e o banco.</p>
+          <p>A app vai buscar o SAF-T ao InvoiceXpress todos os dias (do dia 1 ao 5 fecha o mês anterior). Também podes carregar em <strong>Ir buscar ao InvoiceXpress</strong> para um mês à escolha, ou importar o ficheiro .xml/.zip exportado à mão. O SAF-T conta a partir de novembro de 2026: passa a ser o faturado oficial e a app mostra o que não bate com a caixa diária e o banco.</p>
         </Panel>
       ) : (
         <>
@@ -220,12 +220,14 @@ function ImportModal({ onClose, onDone }) {
   }
 
   const info = parsed?.info
+  const antesDoInicio = info && !saftContaMes(info.fim.slice(0, 7))
   const anuladas = parsed?.docs.filter(d => d.estado === 'A').length || 0
   return (
     <Modal title="Importar SAF-T" onClose={onClose}>
       <p className="muted">Escolhe o SAF-T de faturação exportado do programa de faturação (.xml ou .zip). Se já importaste o mesmo período, os documentos são substituídos.</p>
       <input type="file" accept=".xml,.zip,application/xml,text/xml,application/zip" onChange={e => pick(e.target.files?.[0])} />
       {error && <div className="notice bad">{error}</div>}
+      {antesDoInicio && <div className="notice bad">Este SAF-T é de antes de novembro de 2026. O SAF-T só conta a partir de novembro, quando a faturação passou a ser feita com a app.</div>}
       {info && (
         <table className="mini-table">
           <tbody>
@@ -238,7 +240,7 @@ function ImportModal({ onClose, onDone }) {
       )}
       <div className="actions end">
         <button className="secondary" onClick={onClose}>Cancelar</button>
-        <button className="primary" disabled={!parsed || busy} onClick={save}>{busy ? 'A importar…' : 'Importar'}</button>
+        <button className="primary" disabled={!parsed || busy || antesDoInicio} onClick={save}>{busy ? 'A importar…' : 'Importar'}</button>
       </div>
     </Modal>
   )

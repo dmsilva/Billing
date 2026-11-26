@@ -5,7 +5,7 @@
 //  - 202: o InvoiceXpress começou a preparar o ficheiro; pedir outra vez daqui a uns segundos.
 //  - 200: { Url } para descarregar o SAF-T (.zip ou .xml).
 //  - 422: não há documentos nesse mês.  - 401: chave inválida.
-import { parseSaft, saftText } from './saft.js'
+import { parseSaft, SAFT_INICIO, saftContaMes, saftText } from './saft.js'
 
 // Aceita "chaletdavila", "chaletdavila.app.invoicexpress.com" ou o endereço completo.
 export function contaDe(raw) {
@@ -59,6 +59,7 @@ export async function sincronizarMes({ admin, conta, apiKey, mes, automatico = f
   try {
     if (!conta || !apiKey) throw new Error('Falta configurar INVOICEXPRESS_CONTA e INVOICEXPRESS_API_KEY nas variáveis de ambiente do Netlify.')
     if (!MES_RE.test(mes || '')) throw new Error('Mês inválido.')
+    if (!saftContaMes(mes)) throw new Error(`O SAF-T só conta a partir de ${SAFT_INICIO}.`)
     const fim = Date.now() + esperarMs
     let r = await pedirSaft({ conta, apiKey, mes, fetchImpl })
     while (r.estado === 'a_preparar' && Date.now() + intervaloMs < fim) {

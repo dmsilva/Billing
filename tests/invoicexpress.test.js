@@ -3,14 +3,14 @@ import { contaDe, mesAutomatico, pedirSaft, sincronizarMes, urlExportSaft } from
 import { ivaPorTaxa } from '../src/lib/saft.js'
 import { mapaIva, mapaIvaAno, taxaLabel } from '../src/lib/mapaIva.js'
 
-const XML = `<?xml version="1.0" encoding="UTF-8"?><AuditFile><Header><TaxRegistrationNumber>513102914</TaxRegistrationNumber><CompanyName>Teste</CompanyName><StartDate>2026-10-01</StartDate><EndDate>2026-10-31</EndDate></Header>
+const XML = `<?xml version="1.0" encoding="UTF-8"?><AuditFile><Header><TaxRegistrationNumber>513102914</TaxRegistrationNumber><CompanyName>Teste</CompanyName><StartDate>2026-11-01</StartDate><EndDate>2026-11-31</EndDate></Header>
 <SourceDocuments><SalesInvoices>
-<Invoice><InvoiceNo>FR A/1</InvoiceNo><DocumentStatus><InvoiceStatus>N</InvoiceStatus></DocumentStatus><InvoiceDate>2026-10-02</InvoiceDate><InvoiceType>FR</InvoiceType><CustomerID>1</CustomerID>
+<Invoice><InvoiceNo>FR A/1</InvoiceNo><DocumentStatus><InvoiceStatus>N</InvoiceStatus></DocumentStatus><InvoiceDate>2026-11-02</InvoiceDate><InvoiceType>FR</InvoiceType><CustomerID>1</CustomerID>
 <Line><ProductDescription>Quarto</ProductDescription><CreditAmount>100</CreditAmount><Tax><TaxPercentage>6</TaxPercentage></Tax></Line>
 <Line><ProductDescription>City Tax</ProductDescription><CreditAmount>4</CreditAmount><Tax><TaxPercentage>0</TaxPercentage></Tax><TaxExemptionCode>M99</TaxExemptionCode></Line>
 <Line><ProductDescription>Bar</ProductDescription><CreditAmount>10</CreditAmount><Tax><TaxPercentage>23</TaxPercentage></Tax></Line>
 <DocumentTotals><TaxPayable>8.3</TaxPayable><NetTotal>114</NetTotal><GrossTotal>122.3</GrossTotal></DocumentTotals></Invoice>
-<Invoice><InvoiceNo>NC A/1</InvoiceNo><DocumentStatus><InvoiceStatus>N</InvoiceStatus></DocumentStatus><InvoiceDate>2026-10-03</InvoiceDate><InvoiceType>NC</InvoiceType><CustomerID>1</CustomerID>
+<Invoice><InvoiceNo>NC A/1</InvoiceNo><DocumentStatus><InvoiceStatus>N</InvoiceStatus></DocumentStatus><InvoiceDate>2026-11-03</InvoiceDate><InvoiceType>NC</InvoiceType><CustomerID>1</CustomerID>
 <Line><ProductDescription>Quarto</ProductDescription><References><Reference>FR A/1</Reference></References><DebitAmount>50</DebitAmount><Tax><TaxPercentage>6</TaxPercentage></Tax></Line>
 <DocumentTotals><TaxPayable>3</TaxPayable><NetTotal>50</NetTotal><GrossTotal>53</GrossTotal></DocumentTotals></Invoice>
 </SalesInvoices></SourceDocuments></AuditFile>`
@@ -54,7 +54,7 @@ describe('InvoiceXpress', () => {
     const admin = fakeAdmin()
     let n = 0
     const fetchImpl = async url => (url.includes('export_saft') ? (n++ < 1 ? resp(202, {}) : resp(200, { Url: 'https://x/s.xml' })) : resp(200, XML))
-    const r = await sincronizarMes({ admin, conta: 'c', apiKey: 'k', mes: '2026-10', esperarMs: 1000, intervaloMs: 1, fetchImpl, automatico: true })
+    const r = await sincronizarMes({ admin, conta: 'c', apiKey: 'k', mes: '2026-11', esperarMs: 1000, intervaloMs: 1, fetchImpl, automatico: true })
     expect(r.estado).toBe('ok')
     expect(admin.calls.rpc[0].args.p_info.origem).toBe('invoicexpress')
     expect(admin.calls.rpc[0].args.p_docs[0].por_taxa).toEqual([
@@ -62,19 +62,19 @@ describe('InvoiceXpress', () => {
       { taxa: 6, isencao: '', base: 100, iva: 6 },
       { taxa: 0, isencao: 'M99', base: 4, iva: 0 },
     ])
-    expect(admin.calls.inserts[0]).toMatchObject({ mes: '2026-10', estado: 'ok', automatico: true, documentos: 2 })
+    expect(admin.calls.inserts[0]).toMatchObject({ mes: '2026-11', estado: 'ok', automatico: true, documentos: 2 })
   })
 
   it('regista o erro quando falta a configuração', async () => {
     const admin = fakeAdmin()
-    const r = await sincronizarMes({ admin, conta: '', apiKey: '', mes: '2026-10' })
+    const r = await sincronizarMes({ admin, conta: '', apiKey: '', mes: '2026-11' })
     expect(r.estado).toBe('erro')
     expect(admin.calls.inserts[0].mensagem).toMatch(/INVOICEXPRESS_API_KEY/)
   })
 
   it('devolve "a preparar" quando o ficheiro não fica pronto a tempo', async () => {
     const admin = fakeAdmin()
-    const r = await sincronizarMes({ admin, conta: 'c', apiKey: 'k', mes: '2026-10', esperarMs: 0, fetchImpl: async () => resp(202, {}) })
+    const r = await sincronizarMes({ admin, conta: 'c', apiKey: 'k', mes: '2026-11', esperarMs: 0, fetchImpl: async () => resp(202, {}) })
     expect(r.estado).toBe('a_preparar')
   })
 })
@@ -105,5 +105,15 @@ describe('Mapa de IVA', () => {
     expect(a.meses.map(m => m.mes)).toEqual(['2026-10', '2026-11'])
     expect(a.taxas.map(t => t.key)).toEqual(['23|', '6|', '0|M99'])
     expect(a.total.iva).toBe(27.8)
+  })
+})
+
+describe('InvoiceXpress antes de novembro de 2026', () => {
+  it('não importa meses anteriores ao início do SAF-T', async () => {
+    const inserts = []
+    const admin = { from: () => ({ insert: async row => { inserts.push(row); return {} } }), rpc: async () => { throw new Error('não devia importar') } }
+    const r = await sincronizarMes({ admin, conta: 'c', apiKey: 'k', mes: '2026-10', fetchImpl: async () => { throw new Error('não devia pedir') } })
+    expect(r.estado).toBe('erro')
+    expect(inserts[0].mensagem).toMatch(/2026-11/)
   })
 })

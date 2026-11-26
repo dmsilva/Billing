@@ -6,7 +6,7 @@
 //    a caixa, nunca soma outra vez ao recebido.
 //  - Recebido fora da caixa = entradas no banco que contam como receita (Expedia, Stripe,
 //    transferências…), como em creditCountsAsRevenue.
-import { docCounts, docSign, needsReceipt } from './saft.js'
+import { docCounts, docSign, needsReceipt, saftContaMes } from './saft.js'
 import { cashCloseTotal, creditCountsAsRevenue } from './finance.js'
 import { sameAmount, sub, sum, sumBy } from './money.js'
 import { monthOf } from './dates.js'
@@ -19,13 +19,14 @@ const TPA_TOLERANCE = 50
 export const signedTotal = d => docSign(d) * Number(d.total || 0)
 export const signedCityTax = d => docSign(d) * Number(d.city_tax || 0)
 
-export const saftMonths = docs => [...new Set(docs.map(d => monthOf(d.data)))].filter(Boolean).sort()
+export const saftMonths = docs => [...new Set(docs.map(d => monthOf(d.data)))].filter(saftContaMes).sort()
 
 // Faturado SAF-T por mês: { 'AAAA-MM': { total, cityTax } } (sem documentos anulados).
 export function saftByMonth(docs) {
   const out = {}
   for (const d of docs.filter(docCounts)) {
     const m = monthOf(d.data)
+    if (!saftContaMes(m)) continue
     out[m] ||= { total: 0, cityTax: 0 }
     out[m].total = sum([out[m].total, signedTotal(d)])
     out[m].cityTax = sum([out[m].cityTax, signedCityTax(d)])

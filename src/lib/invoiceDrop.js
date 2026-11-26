@@ -5,11 +5,22 @@ import { matchProperty, normalizeReading } from './invoiceReading.js'
 import { ruleFor, supplierKey } from './autoInvoices.js'
 import { parseMoney } from './money.js'
 
+// NIF da empresa (Patricia Jesus Pereira Unip Lda). Faturas do email com outro NIF de cliente,
+// ou de consumidor final, não são despesas da empresa.
+export const EMPRESA_NIFS = ['513102914']
+
+// 'sim' (tem o NIF da empresa), 'nao' (outro cliente ou consumidor final) ou '?' (não se conseguiu ler).
+export function clienteEmpresa({ nifCliente, consumidorFinal }) {
+  if (nifCliente) return EMPRESA_NIFS.includes(nifCliente) ? 'sim' : 'nao'
+  return consumidorFinal ? 'nao' : '?'
+}
+
 const formatAmount = n => (n === null || n === undefined ? '' : Number(n).toFixed(2).replace('.', ','))
 const cents = v => (v === null || v === undefined || v === '' ? null : Math.round(Number(v) * 100))
 
 // "FT 2026A/123", "ft2026a-123" e "FT 2026 A/123" são o mesmo documento.
-export const docKey = s => String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '')
+// Zeros à esquerda não contam: "FS 0451/22334" (PDF) e "FS 451/22334" (lido da foto) são o mesmo.
+export const docKey = s => (String(s || '').toUpperCase().match(/[A-Z]+|\d+/g) || []).map(t => (/^\d/.test(t) ? t.replace(/^0+(?=\d)/, '') : t)).join('')
 
 // Documentos que já vêm pagos: fatura-recibo, fatura simplificada (talão de loja), venda a dinheiro, talão e recibo.
 const PAID_QR = new Set(['FR', 'FS', 'VD', 'TV', 'RG', 'RC'])
@@ -54,7 +65,8 @@ export function buildDraft({ qr, leitura, invoices = [], properties = [], rules 
   if (qr && r?.valor_total !== null && r?.valor_total !== undefined && cents(r.valor_total) !== cents(qr.valor_total)) {
     avisos.push(`A leitura da imagem deu ${formatAmount(r.valor_total)} €, mas o código QR diz ${formatAmount(qr.valor_total)} €. Ficou o valor do QR.`)
   }
-  if (qr?.tipo === 'NC' || (!qr && r?.tipo_documento === 'nota_credito')) avisos.push('É uma nota de crédito (devolução), não uma fatura a pagar.')
+  const notaCredito = qr?.tipo === 'NC' || (!qr && r?.tipo_documento === 'nota_credito')
+  if (notaCredito) avisos.push('É uma nota de crédito (anulação): fica com valor negativo e abate às despesas.')
   if (qr?.anulado) avisos.push('O código QR diz que este documento foi anulado.')
   if (!qr && !r) avisos.push('Não foi possível ler este ficheiro. Preenche os campos à mão.')
   if (data && today && data > today) avisos.push('A data da fatura é no futuro. Confirma a data.')
@@ -76,8 +88,8 @@ export function buildDraft({ qr, leitura, invoices = [], properties = [], rules 
     fornecedor: fornecedor || '',
     data: data || '',
     documento: documento || '',
-    valor: formatAmount(valor),
-    iva: formatAmount(iva),
+    valor: formatAmount(valor != null && notaCredito ? -Math.abs(valor) : valor),
+    iva: formatAmount(iva != null && notaCredito ? -Math.abs(iva) : iva),
     descricao: r?.descricao || '',
     imovel_id: imovel_id === null ? '' : String(imovel_id),
     // Fornecedor com categoria fixa (Editar categorias) ganha à última usada.
@@ -87,6 +99,8 @@ export function buildDraft({ qr, leitura, invoices = [], properties = [], rules 
     pagaNoAto,
     nif: nif || '',
     atcud: qr?.atcud || '',
+    nifCliente: qr?.nif_cliente || r?.nif_cliente || '',
+    consumidorFinal: Boolean(qr?.consumidor_final && !r?.nif_cliente),
     tipo: qr?.tipo_nome || AI_TIPO_NOME[r?.tipo_documento] || null,
     fonte,
     avisos,
@@ -121,7 +135,7 @@ export function draftToInvoice(draft, { userId }) {
   const iva = String(draft.iva || '').trim() ? parseMoney(draft.iva) : null
   if (String(draft.iva || '').trim() && iva === null) return { error: 'O IVA não é válido. Usa, por exemplo, 2,30' }
   if (!draft.data) return { error: 'Falta a data da fatura.' }
-  if (!['Por pagar', 'Numerário', 'CGD'].includes(draft.pagamento)) return { error: 'Escolhe como foi paga.' }
+  if (!['Por pagar', 'Numerário', 'CGD', 'Airbnb'].includes(draft.pagamento)) return { error: 'Escolhe como foi paga.' }
   const obs = [
     draft.nif && `NIF do fornecedor: ${draft.nif}`,
     draft.atcud && `ATCUD: ${draft.atcud}`,

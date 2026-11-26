@@ -6,7 +6,7 @@ import { supabase } from '../supabase'
 import { ACCEPTED, uploadInvoiceFile, validateFile } from '../data/files'
 import { readInvoiceFiles, saveReadLines } from '../data/invoiceReading'
 import { scanInvoiceQr } from '../data/qrScan'
-import { buildDraft, draftToInvoice, findInvoiceDuplicates } from '../lib/invoiceDrop'
+import { EMPRESA_NIFS, buildDraft, clienteEmpresa, draftToInvoice, findInvoiceDuplicates } from '../lib/invoiceDrop'
 import { fileType } from '../lib/invoiceReading'
 import { formatDate, todayIso } from '../lib/dates'
 import { euro, parseMoney } from '../lib/money'
@@ -20,6 +20,17 @@ const FONTE_TITLE = { qr: 'Tirado do código QR da fatura (o mais fiável)', ia:
 
 // Abre a janela de revisão com ficheiros escolhidos noutro sítio (ex.: botão na página Faturas).
 export const openDroppedInvoices = files => window.dispatchEvent(new CustomEvent(OPEN_EVENT, { detail: [...files] }))
+
+// A fatura registada que é certamente esta: mesmo ATCUD ou nº de documento, ou a única com o
+// mesmo fornecedor, data e valor. Duas ou mais candidatas ficam para escolher à mão.
+export function sameInvoice(dups) {
+  const real = (dups || []).filter(x => !x.invoice.lote)
+  if (real.length !== (dups || []).length) return null
+  const sure = real.filter(x => x.certeza === 'certo')
+  if (sure.length === 1) return sure[0].invoice
+  if (!sure.length && real.length === 1) return real[0].invoice
+  return null
+}
 
 const hasFiles = e => [...(e.dataTransfer?.types || [])].includes('Files')
 
@@ -46,7 +57,14 @@ export default function ArrastarFaturas({ dropAnywhere = true }) {
       draft.emailDe = em.remetente || 'email'
       // Escolhido na página Faturas do email (ex.: débito direto na CGD para gás, luz e telefone).
       // A regra do fornecedor (ex.: Grão de Trigo por pagar) ganha à escolha geral da página.
-      if (em.pagamento && !draft.regraPagamento) { draft.pagamento = em.pagamento; draft.debitoDireto = em.pagamento === 'CGD' }
+      if (em.pagamento && !draft.regraPagamento) {
+        draft.pagamento = em.pagamento === 'CGD-cartao' ? 'CGD' : em.pagamento
+        draft.debitoDireto = em.pagamento === 'CGD'
+      }
+      // Só interessam as faturas passadas à empresa (o Daniel também recebe faturas pessoais).
+      draft.clienteEmpresa = clienteEmpresa(draft)
+      if (draft.clienteEmpresa === 'nao') draft.avisos.unshift(`Esta fatura não tem o NIF da empresa (${EMPRESA_NIFS[0]})${draft.nifCliente ? `: o cliente é o NIF ${draft.nifCliente}` : ': é de consumidor final'}. Não é despesa da empresa.`)
+      if (draft.clienteEmpresa === '?') draft.avisos.push(`Não consegui confirmar se a fatura tem o NIF da empresa (${EMPRESA_NIFS[0]}). Confirma no ficheiro.`)
     }
     if (read.error && !qr) draft.avisos.unshift(read.error.replace(' Preenche os campos à mão.', ''))
     patch(item.key, { status: 'pronto', draft, linhas: read.leitura?.linhas || [] })
@@ -131,17 +149,66 @@ export default function ArrastarFaturas({ dropAnywhere = true }) {
     patch(it.key, { status: 'gravada', invoiceId: inv.id, error: fileErr ? `A fatura ficou gravada, mas o ficheiro não foi anexado (${fileErr}). Junta-o na fatura.` : null })
   }
 
+  // Fatura que já estava registada (ex.: foto tirada pela receção): junta-lhe o ficheiro do email,
+  // que é melhor, e lê os produtos a partir dele. Não cria uma fatura nova.
+  async function juntar(it, target) {
+    patch(it.key, { status: 'a gravar', error: null })
+    try { await uploadInvoiceFile({ file: it.file, invoiceId: target.id, userId: user.id }) } catch (err) {
+      return patch(it.key, { status: 'pronto', error: `Não foi possível juntar o ficheiro: ${err.message}` })
+    }
+    const now = new Date().toISOString()
+    const upd = {}
+    if (it.linhas.length) {
+      // Os produtos lidos do ficheiro do email substituem os lidos da foto (os escritos à mão ficam).
+      const del = await supabase.from('invoice_lines').delete().eq('invoice_id', target.id).eq('lido_auto', true)
+      if (!del.error) {
+        try { await saveReadLines({ id: target.id, fornecedor: target.fornecedor, data: target.data }, it.linhas); upd.artigos_lidos_em = now } catch { /* fica por ler em Produtos */ }
+      }
+    }
+    // NIF e ATCUD que faltem na fatura, para a reconhecer da próxima vez.
+    const obs = String(target.observacoes || '')
+    const extra = [
+      it.draft.nif && !obs.includes(it.draft.nif) && `NIF do fornecedor: ${it.draft.nif}`,
+      it.draft.atcud && !obs.includes(it.draft.atcud) && `ATCUD: ${it.draft.atcud}`,
+      `Ficheiro do email junto${it.draft.emailDe ? ` (${it.draft.emailDe})` : ''}.`,
+    ].filter(Boolean)
+    upd.observacoes = [obs.trim(), ...extra].filter(Boolean).join('\n')
+    await supabase.from('invoices').update(upd).eq('id', target.id)
+    if (it.file.emailFatura) {
+      await supabase.from('email_faturas').update({ estado: 'gravada', invoice_id: target.id, tratado_em: now, tratado_por: user.id }).eq('id', it.file.emailFatura.id)
+      window.dispatchEvent(new CustomEvent(EMAIL_SAVED_EVENT, { detail: it.file.emailFatura.id }))
+    }
+    const { data: full } = await supabase.from('invoices').select(INVOICE_SELECT).eq('id', target.id).single()
+    if (full) upsertLocal('invoices', full)
+    patch(it.key, { status: 'junta', invoiceId: target.id })
+  }
+
+  // Fatura do email que não é da empresa: sai da fila (fica em Ignoradas).
+  async function ignorar(it) {
+    if (it.file.emailFatura) {
+      await supabase.from('email_faturas').update({ estado: 'ignorada', tratado_em: new Date().toISOString(), tratado_por: user.id }).eq('id', it.file.emailFatura.id)
+      window.dispatchEvent(new CustomEvent(EMAIL_SAVED_EVENT, { detail: it.file.emailFatura.id }))
+    }
+    patch(it.key, { status: 'ignorada' })
+  }
+
   // Faturas do email marcadas para gravar sozinhas: assim que estão lidas, completas e sem aviso
   // de repetida, gravam-se; as outras ficam na janela para rever.
-  const saveRef = useRef(save)
-  saveRef.current = save
+  // Sem o NIF da empresa vão para Ignoradas; as que já estavam registadas recebem o ficheiro do email.
+  const actions = useRef({})
+  actions.current = { save, juntar, ignorar }
   useEffect(() => {
     for (const it of items) {
       if (it.status !== 'pronto' || it.autoTried || !it.file.emailFatura?.gravarSozinha) continue
       const d = it.draft
-      const complete = d.data && d.fornecedor.trim() && d.valor && d.pagamento && !(dupsByKey[it.key] || []).length
+      const dups = dupsByKey[it.key] || []
       patch(it.key, { autoTried: true })
-      if (complete) saveRef.current(it)
+      if (d.clienteEmpresa === 'nao') { actions.current.ignorar(it); continue }
+      if (d.clienteEmpresa === '?') continue
+      const target = sameInvoice(dups)
+      if (target) { actions.current.juntar(it, target); continue }
+      const complete = d.data && d.fornecedor.trim() && d.valor && d.pagamento && !dups.length
+      if (complete) actions.current.save(it)
     }
   }, [items, dupsByKey])
 
@@ -149,6 +216,7 @@ export default function ArrastarFaturas({ dropAnywhere = true }) {
   // Gravar de uma vez só as completas e sem aviso de repetida; as outras gravam-se uma a uma.
   const safe = ready.filter(it => !(dupsByKey[it.key] || []).length && it.draft.data && it.draft.fornecedor.trim() && it.draft.valor && it.draft.pagamento)
   const pending = items.filter(it => it.status === 'a ler' || it.status === 'a gravar').length
+  const done = items.filter(it => ['gravada', 'junta', 'ignorada'].includes(it.status)).length
 
   function close() {
     if (pending) return toast('Espera que termine a leitura ou a gravação.', 'bad')
@@ -168,10 +236,12 @@ export default function ArrastarFaturas({ dropAnywhere = true }) {
             <DropCard key={it.key} it={it} dups={dupsByKey[it.key] || []} properties={ctx.current.properties}
               onChange={p => patch(it.key, o => ({ draft: { ...o.draft, ...p, fonte: { ...o.draft.fonte, ...Object.fromEntries(Object.keys(p).map(k => [k, 'manual'])) } } }))}
               onSave={() => save(it)}
+              onJoin={target => juntar(it, target)}
+              onIgnore={() => ignorar(it)}
               onDiscard={() => { URL.revokeObjectURL(it.url); setItems(list => list.filter(o => o.key !== it.key)) }} />
           ))}
           <div className="drop-foot">
-            <span className="small">{pending ? `A tratar ${pending} ficheiro(s)…` : `${items.filter(i => i.status === 'gravada').length} gravada(s) · ${ready.length} por gravar`}</span>
+            <span className="small">{pending ? `A tratar ${pending} ficheiro(s)…` : `${done} tratada(s) · ${ready.length} por gravar`}</span>
             <label className="drop-more secondary">+ Juntar mais<input type="file" accept={ACCEPTED} multiple onChange={e => { add(e.target.files); e.target.value = '' }} /></label>
             <button type="button" className="primary" disabled={!safe.length} onClick={saveAll} title="Grava as que têm fornecedor, data e valor e não parecem repetidas">Gravar as {safe.length} completas</button>
             <button type="button" className="secondary" onClick={close} disabled={!!pending}>Fechar</button>
@@ -182,7 +252,7 @@ export default function ArrastarFaturas({ dropAnywhere = true }) {
   )
 }
 
-function DropCard({ it, dups, properties, onChange, onSave, onDiscard }) {
+function DropCard({ it, dups, properties, onChange, onSave, onDiscard, onJoin, onIgnore }) {
   const d = it.draft
   const tag = k => d?.fonte?.[k] && FONTE[d.fonte[k]] ? <span className={`src ${d.fonte[k]}`} title={FONTE_TITLE[d.fonte[k]]}>{FONTE[d.fonte[k]]}</span> : null
   const field = (k, label, props = {}) => (
@@ -211,28 +281,34 @@ function DropCard({ it, dups, properties, onChange, onSave, onDiscard }) {
             </select></label>
             <label className={d.pagaNoAto && !d.pagamento ? 'ask' : ''}><span className="lbl">{d.pagaNoAto ? 'Já paga · como?' : 'Pagamento'} {tag('pagamento')}</span><select value={d.pagamento} disabled={it.status !== 'pronto'} onChange={e => onChange({ pagamento: e.target.value })}>
               {!d.pagamento && <option value="">Escolhe como foi paga…</option>}
-              <option value="Numerário">💶 Numerário</option><option value="CGD">🏦 Cartão / transferência (CGD)</option><option value="Por pagar">🕓 Ainda por pagar</option>
+              <option value="Numerário">💶 Numerário</option><option value="CGD">🏦 Cartão / transferência (CGD)</option><option value="Airbnb">🏠 Airbnb</option><option value="Por pagar">🕓 Ainda por pagar</option>
             </select></label>
           </div>
           <label className="drop-desc"><span className="lbl">O que foi comprado {tag('descricao')}</span><input value={d.descricao} disabled={it.status !== 'pronto'} onChange={e => onChange({ descricao: e.target.value })} /></label>
           {d.pagaNoAto && !d.pagamento && it.status === 'pronto' && <div className="reading ask">É {d.tipo ? d.tipo.toLowerCase() : 'um documento já pago'}: fica como paga. Escolhe se foi em numerário ou por cartão/transferência (CGD).</div>}
           {d.avisos.map((a, i) => <div key={i} className="reading bad">{a}</div>)}
-          {dups.length > 0 && it.status !== 'gravada' && (
+          {dups.length > 0 && it.status === 'pronto' && (
             <div className={`reading ${sure ? 'dup' : 'bad'}`}>
               {sure ? '⚠ Esta fatura já parece estar registada:' : 'Pode já estar registada:'}
               <ul>{dups.slice(0, 3).map(({ invoice: inv }) => (
-                <li key={inv.id}>{inv.lote ? <>Neste lote: {inv.lote}</> : <Link to={`/faturas/${inv.id}`} target="_blank">{inv.fornecedor || 'Sem fornecedor'} · {inv.documento || 'sem nº'} · {formatDate(inv.data)} · {inv.valor == null ? 'sem valor' : euro(inv.valor)} · {inv.pagamento}</Link>}</li>
+                <li key={inv.id}>{inv.lote ? <>Neste lote: {inv.lote}</> : <>
+                  <Link to={`/faturas/${inv.id}`} target="_blank">{inv.fornecedor || 'Sem fornecedor'} · {inv.documento || 'sem nº'} · {formatDate(inv.data)} · {inv.valor == null ? 'sem valor' : euro(inv.valor)} · {inv.pagamento}</Link>
+                  {' '}<button type="button" className="link-btn" onClick={() => onJoin(inv)} title="Não cria uma fatura nova: junta este ficheiro à fatura já registada e lê os produtos a partir dele">Juntar o ficheiro a esta</button>
+                </>}</li>
               ))}</ul>
             </div>
           )}
         </>}
         {it.error && <div className="err">{it.error}</div>}
         <div className="drop-actions">
-          {it.status === 'gravada'
-            ? <span className="ok">✓ Gravada {d.pagamento === 'Por pagar' ? 'como por pagar' : d.pagamento === 'CGD' ? 'como paga por CGD' : 'como paga em numerário'} · <Link to={`/faturas/${it.invoiceId}`}>abrir</Link></span>
+          {it.status === 'junta' ? <span className="ok">✓ Já estava registada: ficheiro junto à fatura · <Link to={`/faturas/${it.invoiceId}`}>abrir</Link></span>
+            : it.status === 'ignorada' ? <span className="muted">Não é da empresa: foi para Ignoradas.</span>
+            : it.status === 'gravada'
+            ? <span className="ok">✓ Gravada {d.pagamento === 'Por pagar' ? 'como por pagar' : d.pagamento === 'CGD' ? 'como paga por CGD' : d.pagamento === 'Airbnb' ? 'como paga pela Airbnb' : 'como paga em numerário'} · <Link to={`/faturas/${it.invoiceId}`}>abrir</Link></span>
             : <>
               <button type="button" className="primary" disabled={it.status !== 'pronto'} onClick={onSave}>{it.status === 'a gravar' ? 'A gravar…' : dups.length ? 'Gravar mesmo assim' : 'Gravar'}</button>
               <button type="button" className="secondary" disabled={it.status === 'a gravar'} onClick={onDiscard}>{dups.length ? 'Descartar (é repetida)' : 'Descartar'}</button>
+              {it.file.emailFatura && <button type="button" className="secondary" disabled={it.status === 'a gravar'} onClick={onIgnore} title="Tira da fila do email (fica em Ignoradas)">Ignorar{d?.clienteEmpresa === 'nao' ? ' (não é da empresa)' : ''}</button>}
             </>}
         </div>
       </div>

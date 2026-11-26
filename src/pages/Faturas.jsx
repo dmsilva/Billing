@@ -5,7 +5,7 @@ import { useAuth } from '../auth/AuthProvider'
 import { supabase } from '../supabase'
 import { useMonthOptions } from '../components/FilterBar'
 import InvoiceTable, { exportInvoices } from '../components/InvoiceTable'
-import { Kpi, Panel, Select, useToast } from '../components/ui'
+import { Kpi, Modal, Panel, Select, useToast } from '../components/ui'
 import { invoiceCountsAsExpense, PAYMENT_CASH } from '../lib/finance'
 import { euro, sumBy } from '../lib/money'
 import { monthLabel, monthOf } from '../lib/dates'
@@ -13,7 +13,9 @@ import { printExpenseReport } from '../lib/expenseReport'
 import { PayModal } from './PorLiquidar'
 import { BULK_ACTIONS, bulkPatch, matchesInvoice } from '../lib/invoiceBulk'
 import { openDroppedInvoices } from '../components/ArrastarFaturas'
-import { ACCEPTED } from '../data/files'
+import { ACCEPTED, downloadStoredFile } from '../data/files'
+import { buildInvoicesZip } from '../lib/zipFaturas'
+import ImprimirFaturas from '../components/ImprimirFaturas'
 
 const INVOICE_SELECT = '*, invoice_files(id, nome_ficheiro, mime, storage_path, tamanho, created_at)'
 
@@ -39,14 +41,21 @@ export default function Faturas() {
   const [selected, setSelected] = useState(() => new Set())
   const [action, setAction] = useState('validar')
   const [busy, setBusy] = useState(false)
-  const [order, setOrder] = useState('recentes')
+  // Por omissão, as últimas que chegaram ficam em cima (a data da fatura pode ser de meses atrás,
+  // ex.: as faturas da Airbnb que a receção envia de uma vez).
+  const [order, setOrder] = useState('chegada')
   const [origem, setOrigem] = useState('')
   const [paying, setPaying] = useState(null)
+  const [zipping, setZipping] = useState(null)
+  const [exporting, setExporting] = useState(false)
+  const [printing, setPrinting] = useState(null)
 
   const base = useMemo(() => invoiceRows.filter(r => (!month || monthOf(r.data) === month) && (!origem || (origem === 'rececao') === (r.source.origem === 'rececao')) && matchesInvoice(r, q)), [invoiceRows, month, origem, q])
   const counts = useMemo(() => Object.fromEntries(Object.entries(TABS).map(([k, t]) => [k, base.filter(t.test).length])), [base])
   const rows = useMemo(
-    () => base.filter(TABS[tab].test).sort((a, b) => (order === 'antigas' ? -1 : 1) * (String(b.data).localeCompare(String(a.data)) || String(b.source.created_at).localeCompare(String(a.source.created_at)))),
+    () => base.filter(TABS[tab].test).sort(order === 'chegada'
+      ? (a, b) => String(b.source.created_at).localeCompare(String(a.source.created_at)) || String(b.data).localeCompare(String(a.data))
+      : (a, b) => (order === 'antigas' ? -1 : 1) * (String(b.data).localeCompare(String(a.data)) || String(b.source.created_at).localeCompare(String(a.source.created_at)))),
     [base, tab, order],
   )
   const chosen = rows.filter(r => selected.has(r.id))
@@ -111,6 +120,46 @@ export default function Faturas() {
     if (!printExpenseReport([...list].sort((a, b) => String(a.data).localeCompare(String(b.data))), { title: 'Despesas', subtitle: sub })) toast('O navegador bloqueou a janela do PDF. Autoriza janelas pop-up para este site.', 'bad')
   }
 
+  // Ficheiros originais (PDF/fotos) das selecionadas, ou de todas as visíveis, para a contabilidade:
+  // separados num ZIP ou todos juntos num só PDF (escolhe-se na janela que abre).
+  function askExport() {
+    const list = chosen.length ? chosen : rows
+    if (!list.some(r => r.source.invoice_files?.length)) return toast('Nenhuma destas faturas tem ficheiro (PDF ou foto) guardado.', 'bad')
+    setExporting(true)
+  }
+  async function exportFiles(mode) {
+    setExporting(false)
+    const list = chosen.length ? chosen : rows
+    setZipping({ done: 0, total: 0 })
+    try {
+      const onProgress = (done, total) => setZipping({ done, total })
+      const res = mode === 'pdf'
+        ? await import('../lib/pdfUnico').then(m => m.buildMergedPdf(list, downloadStoredFile, { onProgress, toJpeg: m.browserToJpeg }))
+        : await buildInvoicesZip(list, downloadStoredFile, { onProgress })
+      const { count, failed, withoutFiles } = res
+      const bytes = mode === 'pdf' ? res.pdf : res.zip
+      if (!bytes) return toast('Não foi possível juntar nenhum dos ficheiros.', 'bad')
+      const name = `faturas-${month || new Date().toISOString().slice(0, 10)}${chosen.length ? '-selecionadas' : ''}.${mode === 'pdf' ? 'pdf' : 'zip'}`
+      const a = document.createElement('a')
+      a.href = URL.createObjectURL(new Blob([bytes], { type: mode === 'pdf' ? 'application/pdf' : 'application/zip' }))
+      a.download = name
+      a.click()
+      setTimeout(() => URL.revokeObjectURL(a.href), 5000)
+      const names = l => `${l.slice(0, 5).join(', ')}${l.length > 5 ? '…' : ''}`
+      const notes = [
+        withoutFiles.length ? `${withoutFiles.length} sem ficheiro (${names(withoutFiles.map(r => r.fornecedor || 'Sem fornecedor'))})` : '',
+        failed.length ? `${failed.length} ficheiro${failed.length === 1 ? '' : 's'} ficou de fora (${names(failed.map(e => e.row.fornecedor || 'Sem fornecedor'))})` : '',
+      ].filter(Boolean).join('; ')
+      const what = mode === 'pdf' ? `PDF com ${count} ficheiro${count === 1 ? '' : 's'} descarregado.` : `ZIP com ${count} ficheiro${count === 1 ? '' : 's'} descarregado.`
+      toast(`${what}${notes ? ` Atenção: ${notes}.` : ''}`, notes ? 'bad' : 'ok')
+    } catch (e) {
+      toast(`Não foi possível juntar os ficheiros: ${e.message}`, 'bad')
+    } finally {
+      setZipping(null)
+    }
+  }
+  const zipLabel = zipping ? `A juntar ${zipping.done}/${zipping.total}…` : null
+
   if (params.get('tab') === 'por-liquidar') return <Navigate to="/por-liquidar" replace />
   return (
     <>
@@ -134,8 +183,9 @@ export default function Faturas() {
           <input className="search" type="search" value={q} onChange={e => setQ(e.target.value)} placeholder="Pesquisar fornecedor, documento, descrição ou valor…" aria-label="Pesquisar faturas" />
           <Select value={month} onChange={setMonth} options={months} placeholder="Todos os meses" aria-label="Mês" />
           <Select value={origem} onChange={setOrigem} options={[{ value: 'rececao', label: 'Enviadas pela receção' }, { value: 'admin', label: 'Registadas pela administração' }]} placeholder="Todas as origens" aria-label="Origem" />
-          <Select value={order} onChange={v => setOrder(v || 'recentes')} options={[{ value: 'recentes', label: 'Data: mais recentes primeiro' }, { value: 'antigas', label: 'Data: mais antigas primeiro' }]} aria-label="Ordenar" />
+          <Select value={order} onChange={v => setOrder(v || 'chegada')} options={[{ value: 'chegada', label: 'Últimas que chegaram primeiro' }, { value: 'recentes', label: 'Data: mais recentes primeiro' }, { value: 'antigas', label: 'Data: mais antigas primeiro' }]} aria-label="Ordenar" />
           <button type="button" className="secondary" onClick={pdf} title="Relatório com as faturas visíveis (ou as selecionadas) e o total de cada mês">PDF das despesas</button>
+          <button type="button" className="secondary" disabled={!!zipping} onClick={askExport} title="Descarrega os PDF e fotos das faturas visíveis (ou das selecionadas): separados num ZIP ou todos num só PDF. Bom para enviar à contabilidade.">{zipLabel || 'Descarregar ficheiros'}</button>
           <button type="button" className="secondary" onClick={() => exportInvoices(rows, `faturas-${tab}.csv`)}>Exportar CSV</button>
         </div>
         <div className="notice">Os pagamentos Endesa com CPE <strong>PT0002000133379727RQ</strong> pertencem ao <strong>Chalet do Lago</strong>. Confirma o imóvel desses movimentos em CGD / Extrato.</div>
@@ -148,18 +198,38 @@ export default function Faturas() {
         <Kpi color="orange" icon="%" label="IVA" value={euro(sumBy(rows.filter(r => r.source.iva != null), r => r.source.iva))} note={`${rows.filter(r => r.source.iva == null).length} com IVA a apurar`} />
       </div>
       <Panel>
+        {chosen.length === 0 && rows.length > 0 && (
+          <div className="bulk-bar">
+            <span className="muted small">Para enviar à contabilidade: escolhe o mês em cima e seleciona as faturas (ou todas de uma vez).</span>
+            <button type="button" className="secondary" onClick={() => onSelect(rows.map(r => r.id), true)}>Selecionar todas ({rows.length})</button>
+          </div>
+        )}
         {chosen.length > 0 && (
           <div className="bulk-bar">
             <strong>{chosen.length} selecionada{chosen.length === 1 ? '' : 's'}</strong>
             <Select value={action} onChange={setAction} options={Object.entries(BULK_ACTIONS).map(([value, label]) => ({ value, label }))} aria-label="Ação" />
             <button type="button" className="primary" disabled={busy} onClick={apply}>{busy ? 'A gravar…' : 'Aplicar'}</button>
             <button type="button" className="primary" disabled={!paymentsReady} onClick={startPay}>Liquidar selecionadas</button>
+            <button type="button" className="primary" disabled={!!zipping} onClick={askExport} title="PDF e fotos originais das selecionadas: separados (ZIP) ou todos num só PDF">{zipLabel || '📎 Descarregar ficheiros'}</button>
             <button type="button" className="secondary" onClick={pdf}>PDF das selecionadas</button>
             <button type="button" className="secondary" onClick={() => setSelected(new Set())}>Limpar seleção</button>
           </div>
         )}
         <InvoiceTable rows={rows} showOrigin selected={selected} onSelect={onSelect} />
       </Panel>
+      {exporting && (
+        <Modal title="Descarregar ficheiros" onClose={() => setExporting(false)}>
+          <p>{(chosen.length ? chosen : rows).filter(r => r.source.invoice_files?.length).length} fatura(s) com ficheiro. Como queres receber?</p>
+          <div className="actions">
+            <button type="button" className="primary" onClick={() => exportFiles('pdf')}>Todas juntas num só PDF</button>
+            <button type="button" className="secondary" onClick={() => exportFiles('zip')}>Separadas (ZIP)</button>
+            <button type="button" className="secondary" onClick={() => { setExporting(false); setPrinting((chosen.length ? chosen : rows).filter(r => r.source.invoice_files?.length)) }}>🖨 Para imprimir (escolher páginas)</button>
+          </div>
+          <p className="muted small">No PDF único, as fotos passam a páginas A4, por ordem de data. No ZIP, cada fatura fica num ficheiro com data, fornecedor e valor no nome, mais uma lista em Excel (CSV).</p>
+        </Modal>
+      )}
+      {printing && <ImprimirFaturas items={printing.map(r => ({ id: r.id, names: [r.fornecedor] }))} onClose={() => setPrinting(null)}
+        build={({ pagesById, newSheet, onProgress }) => import('../lib/pdfUnico').then(m => m.buildMergedPdf(printing, downloadStoredFile, { onProgress, newSheet, toJpeg: m.browserToJpeg, pagesFor: e => pagesById[e.row.id] }))} />}
       {paying && <PayModal invoices={paying} total={sumBy(paying, i => i.valor)} transactions={bank_transactions} payments={invoice_payments} allInvoices={invoices}
         prepare={prepareUnpaid} rollback={rollbackUnpaid}
         onClose={() => setPaying(null)} onDone={() => { setSelected(new Set()); reload('invoices'); reload('invoice_payments') }} />}

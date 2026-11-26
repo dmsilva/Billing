@@ -28,6 +28,10 @@ PSQL=(psql -h "$TMP" -p "$PORT" -U postgres -d postgres -v ON_ERROR_STOP=1 -q)
 "${PSQL[@]}" -f "$ROOT/supabase/13_faturas_email_sem_detalhe.sql"
 "${PSQL[@]}" -f "$ROOT/supabase/14_regras_fornecedor.sql"
 "${PSQL[@]}" -f "$ROOT/supabase/15_caixas_app.sql"
+"${PSQL[@]}" -f "$ROOT/supabase/17_pagamento_airbnb.sql" >/dev/null
+"${PSQL[@]}" -f "$ROOT/supabase/18_notas_credito.sql"
+"${PSQL[@]}" -f "$ROOT/supabase/19_dividas_colaboradores.sql"
+"${PSQL[@]}" -f "$ROOT/supabase/20_paginas_imprimir.sql"
 "${PSQL[@]}" -f "$ROOT/supabase/test/01_grants.sql"
 "${PSQL[@]}" -f "$ROOT/supabase/03_seed_legacy.sql"
 echo "Seed aplicado. A repetir para confirmar que é idempotente…"
@@ -45,6 +49,9 @@ echo "Seed aplicado. A repetir para confirmar que é idempotente…"
 "${PSQL[@]}" -f "$ROOT/supabase/13_faturas_email_sem_detalhe.sql"
 "${PSQL[@]}" -f "$ROOT/supabase/14_regras_fornecedor.sql"
 "${PSQL[@]}" -f "$ROOT/supabase/15_caixas_app.sql"
+"${PSQL[@]}" -f "$ROOT/supabase/17_pagamento_airbnb.sql" >/dev/null
+"${PSQL[@]}" -f "$ROOT/supabase/19_dividas_colaboradores.sql"
+"${PSQL[@]}" -f "$ROOT/supabase/20_paginas_imprimir.sql"
 "${PSQL[@]}" -f "$ROOT/supabase/04_verificacao.sql" >/dev/null
 "${PSQL[@]}" -f "$ROOT/supabase/test/02_rls_and_functions_test.sql"
 "${PSQL[@]}" -f "$ROOT/supabase/test/03_pagamentos_test.sql"
@@ -57,3 +64,5 @@ echo "Seed aplicado. A repetir para confirmar que é idempotente…"
 "${PSQL[@]}" -f "$ROOT/supabase/test/10_faturas_email_test.sql"
 "${PSQL[@]}" -f "$ROOT/supabase/test/11_regras_fornecedor_test.sql"
 "${PSQL[@]}" -f "$ROOT/supabase/test/12_caixas_app_test.sql"
+(cd "$ROOT" && "${PSQL[@]}" -f supabase/test/13_pagamento_airbnb_test.sql >/dev/null)
+"${PSQL[@]}" -f "$ROOT/supabase/test/14_dividas_test.sql"
