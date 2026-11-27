@@ -61,7 +61,7 @@ export default function Movimentos() {
       </div>
       <DuplicatesPanel table="bank_transactions" title="Saídas repetidas" rows={bank_transactions} score={dupScore} detail={catName}
         locked={t => (linkedIds.has(t.id) ? 'Tem uma fatura ligada: confirma à mão' : null)} />
-      <Panel title="Saídas da conta CGD" hint="Todos os movimentos do extrato bancário são tratados como pagamentos pela CGD. Aqui não entram as despesas em numerário.">
+      <Panel title="Saídas da conta CGD" hint="Todos os movimentos do extrato bancário são tratados como pagamentos pela CGD. Aqui não entram as despesas em numerário. Os pagamentos Endesa com CPE PT0002000133379727RQ são do Chalet do Lago: confirma o imóvel desses movimentos.">
         <div className="filters flat">
           <input className="search" type="search" value={q} onChange={e => setQ(e.target.value)} placeholder="Pesquisar descrição, categoria, valor (ex.: 12,30) ou data (ex.: 03/07)…" aria-label="Pesquisar saídas" />
           {q.trim() && <span className="muted small">{shown.length} de {rows.length} movimentos</span>}

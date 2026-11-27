@@ -12,37 +12,43 @@ export function exportInvoices(rows, name) {
   ), name)
 }
 
+// Situação contabilística da fatura (pequena etiqueta por baixo do pagamento).
+function accountingBadge(inv, r) {
+  if (invoiceCountsAsExpense(inv)) return <Badge tone="ok">Contabilístico</Badge>
+  if (r.pagamento === 'CGD') return <Badge tone="bank">{inv.bank_transaction_id || inv.payment_id ? 'Ligada ao extrato' : 'Via extrato'}</Badge>
+  if (r.pagamento === 'Por pagar' && inv.estado !== 'Rejeitada') return <Badge tone="pending">Por liquidar</Badge>
+  if (r.pagamento === 'Airbnb' && inv.estado !== 'Rejeitada') return <Badge tone="airbnb">Pela Airbnb</Badge>
+  return <Badge tone="pending">{inv.estado === 'Rejeitada' ? 'Excluída' : 'Sem valor'}</Badge>
+}
+
+// 7 colunas: o documento, os ficheiros e quem enviou ficam por baixo do fornecedor; a categoria e o
+// imóvel por baixo da descrição; a contabilidade por baixo do pagamento; o IVA por baixo do valor.
 // selected/onSelect (opcional): caixas para escolher várias faturas de uma vez.
 export default function InvoiceTable({ rows, showOrigin, selected, onSelect }) {
   const nav = useNavigate()
   return (
     <div className="tablewrap tall">
-      <table>
+      <table className="inv-table">
         <thead>
-          <tr>{onSelect && <th><input type="checkbox" aria-label="Selecionar todas" checked={rows.length > 0 && rows.every(r => selected.has(r.id))} onChange={e => onSelect(rows.map(r => r.id), e.target.checked)} /></th>}<th>Data</th><th>Fornecedor</th><th>Documento</th><th>Descrição</th><th>Categoria</th><th>Imóvel</th><th>Pagamento</th><th>Contabilidade</th><th>IVA</th><th>Estado</th>{showOrigin && <th>Enviado por</th>}<th className="money">Valor</th></tr>
+          <tr>{onSelect && <th><input type="checkbox" aria-label="Selecionar todas" checked={rows.length > 0 && rows.every(r => selected.has(r.id))} onChange={e => onSelect(rows.map(r => r.id), e.target.checked)} /></th>}<th>Data</th><th>Fornecedor</th><th>Descrição</th><th>Pagamento</th><th>Estado</th><th className="money">Valor</th></tr>
         </thead>
         <tbody>
           {rows.length ? rows.map(r => {
             const inv = r.source
             const files = inv.invoice_files?.length || 0
+            const meta = [r.documento, files > 0 && `📎 ${files}`, showOrigin && inv.enviado_por && `por ${inv.enviado_por}`].filter(Boolean).join(' · ')
             return (
               <tr key={r.id} className={`clickable ${selected?.has(r.id) ? 'row-selected' : ''}`} onClick={() => nav(`/faturas/${r.id}`)}>
                 {onSelect && <td onClick={e => e.stopPropagation()}><input type="checkbox" aria-label={`Selecionar ${r.fornecedor || 'fatura'}`} checked={selected.has(r.id)} onChange={e => onSelect([r.id], e.target.checked)} /></td>}
-                <td>{formatDate(r.data)}</td>
-                <td><strong>{r.fornecedor || '—'}</strong>{files > 0 && <div className="muted small">📎 {files} ficheiro{files > 1 ? 's' : ''}</div>}</td>
-                <td>{r.documento || '—'}{isCreditNote(inv) && <div><Badge tone="bad">Nota de crédito</Badge></div>}</td>
-                <td className="wrap">{r.descricao}</td>
-                <td><Badge>{r.categoria}</Badge></td>
-                <td>{r.imovel}</td>
-                <td><PaymentBadge value={r.pagamento} />{inv.liquidada_em && <div className="muted small">Liquidada {formatDate(inv.liquidada_em)}</div>}</td>
-                <td>{invoiceCountsAsExpense(inv) ? <Badge tone="ok">Contabilístico</Badge> : r.pagamento === 'CGD' ? <Badge tone="bank">{inv.bank_transaction_id || inv.payment_id ? 'Ligada ao extrato' : 'Via extrato'}</Badge> : r.pagamento === 'Por pagar' && inv.estado !== 'Rejeitada' ? <Badge tone="pending">Por liquidar</Badge> : r.pagamento === 'Airbnb' && inv.estado !== 'Rejeitada' ? <Badge tone="airbnb">Pela Airbnb</Badge> : <Badge tone="pending">{inv.estado === 'Rejeitada' ? 'Excluída' : 'Sem valor'}</Badge>}</td>
-                <td>{inv.iva == null ? <Badge>IVA {inv.iva_estado.toLowerCase()}</Badge> : euro(inv.iva)}</td>
+                <td className="nowrap">{formatDate(r.data)}</td>
+                <td><strong>{r.fornecedor || '—'}</strong>{meta && <div className="muted small">{meta}</div>}{isCreditNote(inv) && <div><Badge tone="bad">Nota de crédito</Badge></div>}</td>
+                <td className="wrap">{r.descricao}<div className="muted small">{[r.categoria, r.imovel].filter(Boolean).join(' · ')}</div></td>
+                <td><PaymentBadge value={r.pagamento} /> {accountingBadge(inv, r)}{inv.liquidada_em && <div className="muted small">Liquidada {formatDate(inv.liquidada_em)}</div>}</td>
                 <td><StateBadge value={inv.estado} /></td>
-                {showOrigin && <td>{inv.enviado_por || '—'}</td>}
-                <td className="money">{r.valor == null ? '—' : euro(r.valor)}</td>
+                <td className="money"><strong>{r.valor == null ? '—' : euro(r.valor)}</strong><div className="muted small">{inv.iva == null ? `IVA ${String(inv.iva_estado || '').toLowerCase()}` : `IVA ${euro(inv.iva)}`}</div></td>
               </tr>
             )
-          }) : <Empty colSpan={(showOrigin ? 12 : 11) + (onSelect ? 1 : 0)}>Sem documentos para os filtros selecionados.</Empty>}
+          }) : <Empty colSpan={6 + (onSelect ? 1 : 0)}>Sem documentos para os filtros selecionados.</Empty>}
         </tbody>
       </table>
     </div>
