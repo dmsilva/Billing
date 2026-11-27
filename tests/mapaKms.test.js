@@ -208,6 +208,10 @@ describe('ajudas de custo na folha de ordenados', () => {
     expect(mesmaPessoa('Patricia de Jesus Pereira', 'Patricia Jesus Pereira')).toBe(true)
     expect(mesmaPessoa('Joel Matias dos Santos Mendes', 'Joel Matias Santos Mendes')).toBe(true)
     expect(mesmaPessoa('Joelma Jesus Figueiredo', 'Joel Matias Santos Mendes')).toBe(false)
+    expect(mesmaPessoa('Patrícia', 'Patricia Jesus Pereira')).toBe(true)
+    expect(mesmaPessoa('Joel Mendes', 'Joel Matias Santos Mendes')).toBe(true)
+    expect(mesmaPessoa('Joelma', 'Joel Matias Santos Mendes')).toBe(false)
+    expect(mesmaPessoa('Patrícia Costa', 'Patricia Jesus Pereira')).toBe(false)
   })
   it('põe o total do mapa de cada um em Ajud. Custo, no ecrã e no Excel', async () => {
     const { mapa } = calcularMapa({ invoices: [], ano: 2026, mes: 11 })

@@ -519,5 +519,7 @@ export function mesmaPessoa(nomeFolha, nomeMapa) {
   const t = n => normal(n).split(/[^a-z]+/).filter(Boolean)
   const a = t(nomeFolha), b = t(nomeMapa)
   if (!a.length || !b.length) return false
-  return a.includes(b[0]) && a.includes(b[b.length - 1])
+  if (!a.includes(b[0])) return false
+  // Nome completo, algum apelido em comum, ou só o primeiro nome na folha (ex.: "Patrícia").
+  return a.length === 1 || b.slice(1).some(x => a.includes(x))
 }
