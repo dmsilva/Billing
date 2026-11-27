@@ -378,28 +378,46 @@ export function juntarAjudasCusto(linhas, recibos, mesma) {
   })
 }
 
-// Lê um Excel guardado no histórico para o mostrar na app tal como vai no ficheiro.
-// Devolve { titulo, subtitulo, cima, cabecalho, linhas } com os valores já em texto.
-const textoCelula = cell => {
-  let v = cell.value
-  if (v && typeof v === 'object' && !(v instanceof Date)) v = v.result ?? (v.richText ? v.richText.map(t => t.text).join('') : v.text ?? null)
-  if (v === null || v === undefined) return ''
-  if (v instanceof Date) return v.toLocaleDateString('pt-PT', { timeZone: 'UTC' })
-  if (typeof v === 'number' && String(cell.numFmt || '').includes('€')) return fmtEuro(v)
-  return String(v)
+// Volta a montar os dados (para gerarExcel/gerarPdf) a partir de um Excel guardado no histórico,
+// para se poder corrigir um envio antigo na app e descarregar de novo.
+const bruto = cell => {
+  const v = cell.value
+  if (v && typeof v === 'object' && !(v instanceof Date)) return v.result ?? (v.richText ? v.richText.map(t => t.text).join('') : v.text ?? null)
+  return v
 }
-export async function lerFicheiroGuardado(bytes) {
+export async function dadosDoFicheiro(bytes, anoMes, historico = []) {
   const { default: ExcelJS } = await import('exceljs')
   const wb = new ExcelJS.Workbook()
   await wb.xlsx.load(bytes)
   const ws = wb.worksheets[0]
   if (!ws) throw new Error('O Excel guardado está vazio.')
-  const n = ws.columnCount
-  const linha = r => Array.from({ length: n }, (_, i) => textoCelula(ws.getCell(r, i + 1)))
+  const col = {}
+  for (let i = 1; i <= ws.columnCount; i++) col[String(bruto(ws.getCell(4, i)) ?? '').trim()] = i
+  const cel = (r, titulo) => (col[titulo] ? bruto(ws.getCell(r, col[titulo])) : null)
+  const codigos = {}
+  for (const c of COLUNAS) if (c.codigo && col[c.titulo]) { const v = bruto(ws.getCell(3, col[c.titulo])); if (v !== null && v !== '') codigos[c.codigo] = Number(v) || v }
+  const num = v => (v === null || v === undefined || v === '' ? 0 : Number(v) || 0)
   const linhas = []
   for (let r = 5; r <= ws.rowCount; r++) {
-    const l = linha(r)
-    if (l.some(v => v !== '')) linhas.push(l)
+    const nome = String(cel(r, 'Nome') ?? '').trim()
+    if (!nome) continue
+    const h = historico[linhas.length]
+    const venc = cel(r, 'Venc.'), ajud = cel(r, 'Ajud. Custo'), adm = cel(r, 'Data')
+    linhas.push({
+      codigo: cel(r, 'Codigo') ?? null,
+      nome,
+      vencimento: venc === null || venc === '' ? null : Number(venc),
+      admissao: adm instanceof Date ? lerData(adm) : adm === null ? '' : String(adm),
+      ajudCusto: num(ajud) || null,
+      feriados: num(cel(r, 'Feriado')),
+      noites: num(cel(r, 'Noites')),
+      ferias: num(cel(r, 'Férias')),
+      faltas: h && mesmoNome(h.nome, nome) ? num(h.faltas) : 0,
+      nota: String(cel(r, 'Notas') ?? ''),
+      ...(h && mesmoNome(h.nome, nome) && h.corrigido ? { corrigidoAntes: h.corrigido } : {}),
+    })
   }
-  return { titulo: textoCelula(ws.getCell(1, 1)), subtitulo: textoCelula(ws.getCell(2, 1)), cima: linha(3), cabecalho: linha(4), linhas }
+  const [ano, mes] = String(anoMes).split('-').map(Number)
+  return { ano, mes, empresa: String(bruto(ws.getCell(1, 1)) ?? ''), codigos, linhas }
 }
+const mesmoNome = (a, b) => norm(a) === norm(b)

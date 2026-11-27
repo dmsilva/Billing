@@ -139,19 +139,30 @@ describe('ordenados para a contabilidade', () => {
   })
 })
 
-describe('ver um envio do histórico', () => {
-  it('lê o Excel guardado com os mesmos números do ficheiro', async () => {
-    const { lerFicheiroGuardado } = await import('../src/lib/ordenados.js')
+describe('ver e corrigir um envio do histórico', () => {
+  it('volta a montar os dados a partir do Excel guardado e gera o mesmo ficheiro', async () => {
+    const { dadosDoFicheiro } = await import('../src/lib/ordenados.js')
     const d = await lerOrdenados(await horario(), await ordenados(), 2026, 10)
     d.linhas[0].nota = 'Falta justificada a 9/10'
-    const f = await lerFicheiroGuardado(new Uint8Array(await gerarExcel(d)))
-    expect(f.subtitulo).toBe('Ordenados de Outubro 2026')
-    expect(f.cabecalho).toEqual(['Codigo', 'Nome', 'Venc.', 'Data', 'Ajud. Custo', 'Feriado', 'Noites', 'Bx. Médica', 'Bx. Parentalid.', 'Bx. Seguro', 'Férias', 'Notas', 'IRS'])
-    expect(f.cima.slice(3, 10)).toEqual(['Admissão', '130', '126', '181', '416', '413', '417'])
-    expect(f.linhas).toHaveLength(d.linhas.length)
-    expect(f.linhas[0].slice(0, 2)).toEqual(['27', 'Galina Sabaeva'])
-    expect(f.linhas[0][10]).toBe('2')
-    expect(f.linhas[0][11]).toBe('Falta justificada a 9/10')
-    expect(f.linhas[0][2]).toMatch(/€$/)
+    d.linhas[0] = corrigir(d.linhas[0], 'ferias', '3')
+    d.linhas[1].ajudCusto = 312.4
+    const hist = d.linhas.map(l => ({ nome: l.nome, ...(l.corrigido ? { corrigido: l.corrigido } : {}) }))
+    const original = await gerarExcel(d)
+    const n = await dadosDoFicheiro(new Uint8Array(original), '2026-10', hist)
+    expect([n.ano, n.mes]).toEqual([2026, 10])
+    expect(n.empresa).toBe(d.empresa)
+    expect(n.codigos).toEqual(Object.fromEntries(Object.entries(d.codigos).filter(([, v]) => v !== null && v !== undefined)))
+    expect(n.linhas).toHaveLength(d.linhas.length)
+    expect(n.linhas[0]).toMatchObject({ nome: 'Galina Sabaeva', ferias: 3, nota: 'Falta justificada a 9/10', corrigidoAntes: { ferias: 3 } })
+    expect(n.linhas[1].ajudCusto).toBe(312.4)
+    // Gerar de novo sem mudar nada dá as mesmas células.
+    const a = new ExcelJS.Workbook(); await a.xlsx.load(original)
+    const b = new ExcelJS.Workbook(); await b.xlsx.load(await gerarExcel(n))
+    const valores = wb => wb.worksheets[0].getSheetValues().map(r => (r ? r.slice(1) : r))
+    expect(valores(b)).toEqual(valores(a))
+    // Uma correção na app vai para o ficheiro novo.
+    n.linhas[0].noites = 5
+    const c = new ExcelJS.Workbook(); await c.xlsx.load(await gerarExcel(n))
+    expect(c.worksheets[0].getCell('G5').value).toBe(5)
   })
 })
