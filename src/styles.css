@@ -389,3 +389,10 @@ tr.row-alert td{background:#fff5f3}tr.row-alert td:first-child{box-shadow:inset 
 .nc-check{display:flex!important;gap:8px;align-items:flex-start;flex-direction:row!important;font-weight:600;margin:6px 0}.nc-check input{width:auto!important;margin-top:3px;flex:none}
 input.invalid{border-color:#c94a5a;background:#fff4f5}
 .modal input[type=checkbox]{height:auto;width:auto;padding:0}
+/* Página Faturas simplificada */
+.button-like{display:inline-flex;align-items:center;cursor:pointer}
+.link-button{border:0;background:none;color:var(--muted);text-decoration:underline;padding:6px;font-weight:600;cursor:pointer}
+.inv-summary{display:flex;gap:8px 22px;flex-wrap:wrap;padding:10px 12px;margin-bottom:10px;border-radius:12px;background:#fbf8fa;color:var(--muted);font-size:14px}
+.inv-summary b{color:var(--text)}
+.inv-table td .small{margin-top:3px}.inv-table td.nowrap{white-space:nowrap}
+.export-group{padding:12px 0;border-bottom:1px solid var(--line)}.export-group:last-child{border-bottom:0}.export-group strong{display:block;margin-bottom:8px}.export-group p{margin:8px 0 0}
