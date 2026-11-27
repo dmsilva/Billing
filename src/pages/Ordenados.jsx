@@ -277,7 +277,24 @@ function VerEnvio({ envio, dados: inicial, onClose, onBaixar }) {
   const [mudou, setMudou] = useState(false)
   const [guardado, setGuardado] = useState(false)
   const [busy, setBusy] = useState(false)
-  useEffect(() => { setDados(inicial); setMudou(false); setGuardado(false) }, [inicial])
+  // Ajudas de custo em falta (Patrícia e Joel) vêm do mapa de kms do mês, como na página principal.
+  const { invoices } = useData()
+  const [doMapa, setDoMapa] = useState([])
+  useEffect(() => {
+    setGuardado(false)
+    if (!inicial) { setDados(inicial); setMudou(false); setDoMapa([]); return }
+    const { mapa } = calcularMapa({ invoices, ano: inicial.ano, mes: inicial.mes, guardado: lerGuardado() })
+    const preenchidas = []
+    const linhas = juntarAjudasCusto(inicial.linhas.map(l => (Number(l.ajudCusto) > 0 ? { ...l, ajudCustoMao: true } : l)), mapa.recibos, mesmaPessoa)
+      .map((l, i) => {
+        if (l.ajudCustoDoMapa === undefined || Number(inicial.linhas[i].ajudCusto) > 0 || !(l.ajudCusto > 0)) return l
+        preenchidas.push(l.nome)
+        return { ...l, editado: { ...(l.editado || {}), ajudCusto: true } }
+      })
+    setDados({ ...inicial, linhas })
+    setMudou(preenchidas.length > 0)
+    setDoMapa(preenchidas)
+  }, [inicial, invoices])
   const mes = nomeMes(Number(envio.mes.slice(0, 4)), Number(envio.mes.slice(5, 7)))
 
   function mudar(k, campo, texto) {
@@ -331,6 +348,7 @@ function VerEnvio({ envio, dados: inicial, onClose, onBaixar }) {
         <>
           {dados.empresa && <div style={{ fontWeight: 700 }}>{dados.empresa}</div>}
           <div className="notice">Podes mudar os valores diretamente na tabela. Os números a amarelo foram corrigidos à mão.{mudou ? ' Ao descarregar, a versão corrigida fica guardada no histórico como um envio novo; o original não muda.' : ''}</div>
+          {doMapa.length > 0 && <div className="notice ok">Ajudas de custo preenchidas a partir do mapa de kms de {mes}: {doMapa.join(', ')}. Confere antes de descarregar.</div>}
           {guardado && <div className="notice ok">Versão corrigida guardada no histórico.</div>}
           <div className="tablewrap"><table className="mini-table">
             <thead>
@@ -359,7 +377,7 @@ function VerEnvio({ envio, dados: inicial, onClose, onBaixar }) {
         </>
       )}
       <div className="actions" style={{ marginTop: 12, justifyContent: 'flex-end' }}>
-        {mudou && <button className="link-btn" disabled={busy} onClick={() => { setDados(inicial); setMudou(false); setGuardado(false) }}>Desfazer alterações</button>}
+        {mudou && <button className="link-btn" disabled={busy} onClick={() => { setDados(inicial); setMudou(false); setGuardado(false); setDoMapa([]) }}>Desfazer alterações</button>}
         <button className="primary" disabled={busy || dados === null} onClick={() => baixar('xlsx')}>{mudou ? 'Descarregar Excel corrigido' : 'Descarregar Excel'}</button>
         <button className="secondary" disabled={busy || dados === null} onClick={() => baixar('pdf')}>{mudou ? 'Descarregar PDF corrigido' : 'Descarregar PDF'}</button>
         <button className="link-btn" onClick={onClose}>Fechar</button>
