@@ -55,3 +55,64 @@ export function printExpenseReport(rows, opts) {
   setTimeout(() => w.print(), 300)
   return true
 }
+
+// Versão simplificada (ex.: lista para pagar a um fornecedor): só Data (dd/mm), Fatura (nº, com link
+// para o ficheiro quando há) e Valor, por ordem de data, com uma linha de Total no fim.
+// links: { [idDaFatura]: url } com links assinados para o ficheiro de cada fatura.
+export function simpleReport(rows) {
+  const linhas = rows.filter(r => r.estado !== 'Rejeitada').sort((a, b) => String(a.data).localeCompare(String(b.data)))
+  return { linhas, total: sumBy(linhas, r => r.valor), semValor: linhas.filter(r => r.valor == null).length }
+}
+
+// "FT 2026/019144" → "019144" (como na fatura que o fornecedor mostra); sem "/" fica tal e qual.
+export const shortDoc = d => { const s = String(d ?? '').trim(); return s.split(/[/\s]/).filter(Boolean).pop() || '' }
+// Como no exemplo do Daniel: "1 690,66 €" (o pt-PT normal não separa milhares com 4 dígitos).
+const eurG = v => `${Number(v || 0).toLocaleString('pt-PT', { minimumFractionDigits: 2, maximumFractionDigits: 2, useGrouping: 'always' })} €`
+const ddmm = d => (d ? d.slice(8, 10) + '/' + d.slice(5, 7) : '—')
+const safeUrl = u => (/^https:\/\//.test(String(u || '')) ? u : '')
+
+export function simpleReportHtml(report, { title = 'Despesas', subtitle = '', links = {} } = {}) {
+  const doc = r => {
+    const n = esc(shortDoc(r.documento) || '—')
+    const u = safeUrl(links[r.id])
+    return u ? `<a href="${esc(u)}" target="_blank" rel="noreferrer">${n}</a>` : n
+  }
+  return `<!doctype html><html lang="pt-PT"><head><meta charset="utf-8"><title>${esc(title)}</title>
+<style>
+  body{font:14px/1.4 -apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#222;margin:24px}
+  h1{font-size:18px;margin:0 0 2px}.sub{color:#777;margin-bottom:14px;font-size:12px}
+  table{border-collapse:collapse;min-width:300px}
+  th,td{border-bottom:1px solid #e6e6e6;padding:12px 14px;text-align:left}
+  th{color:#8a7a80;font-weight:600}
+  td.n,th.n{text-align:right;white-space:nowrap}td.n{font-weight:700}
+  a{color:#b0587a}
+  tfoot td{font-weight:700;border-top:1px solid #ccc;border-bottom:0}
+  .warn{color:#a15c00;font-size:12px}
+  @media print{body{margin:12mm}tr{break-inside:avoid}}
+</style></head><body>
+<h1>${esc(title)}</h1>${subtitle ? `<div class="sub">${esc(subtitle)}</div>` : ''}
+${report.semValor ? `<p class="warn">${report.semValor} fatura(s) sem valor não entram no total.</p>` : ''}
+${report.linhas.length ? `<table>
+  <thead><tr><th>Data</th><th>Fatura</th><th class="n">Valor</th></tr></thead>
+  <tbody>${report.linhas.map(r => `<tr><td>${ddmm(r.data)}</td><td>${doc(r)}</td><td class="n">${r.valor == null ? 'sem valor' : eurG(r.valor)}</td></tr>`).join('')}</tbody>
+  <tfoot><tr><td colspan="2">Total</td><td class="n">${eurG(report.total)}</td></tr></tfoot>
+</table>` : '<p>Sem faturas.</p>'}
+</body></html>`
+}
+
+// Abre a janela logo (no clique, para o navegador não a bloquear) e só depois preenche,
+// porque os links dos ficheiros são pedidos ao Supabase.
+export async function printSimpleReport(rows, { getLinks, ...opts } = {}) {
+  const w = window.open('', '_blank')
+  if (!w) return false
+  w.document.write('<p style="font-family:sans-serif;margin:24px">A preparar o PDF…</p>')
+  const report = simpleReport(rows)
+  let links = {}
+  try { links = getLinks ? await getLinks(report.linhas) : {} } catch { links = {} }
+  w.document.open()
+  w.document.write(simpleReportHtml(report, { ...opts, links }))
+  w.document.close()
+  w.focus()
+  setTimeout(() => w.print(), 300)
+  return true
+}

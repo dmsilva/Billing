@@ -83,3 +83,14 @@ export async function downloadStoredFile(path) {
   if (error) throw error
   return data
 }
+
+// Links para o PDF simplificado das despesas: um por fatura (o primeiro ficheiro), válidos 30 dias,
+// para se poder abrir a fatura a partir do PDF guardado. Devolve { [idDaFatura]: url }.
+export async function invoiceFileLinks(rows, days = 30) {
+  const pairs = rows.map(r => [r.id, r.source?.invoice_files?.[0]?.storage_path]).filter(([, p]) => p)
+  if (!pairs.length) return {}
+  const { data, error } = await supabase.storage.from(BUCKET).createSignedUrls(pairs.map(([, p]) => p), days * 24 * 3600)
+  if (error) throw error
+  const byPath = new Map((data || []).filter(d => d.signedUrl).map(d => [d.path, d.signedUrl]))
+  return Object.fromEntries(pairs.filter(([, p]) => byPath.has(p)).map(([id, p]) => [id, byPath.get(p)]))
+}

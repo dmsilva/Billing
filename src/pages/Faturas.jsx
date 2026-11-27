@@ -9,11 +9,11 @@ import { Kpi, Modal, Panel, Select, useToast } from '../components/ui'
 import { invoiceCountsAsExpense, PAYMENT_CASH } from '../lib/finance'
 import { euro, sumBy } from '../lib/money'
 import { monthLabel, monthOf } from '../lib/dates'
-import { printExpenseReport } from '../lib/expenseReport'
+import { printExpenseReport, printSimpleReport } from '../lib/expenseReport'
 import { PayModal } from './PorLiquidar'
 import { BULK_ACTIONS, bulkPatch, matchesInvoice } from '../lib/invoiceBulk'
 import { openDroppedInvoices } from '../components/ArrastarFaturas'
-import { ACCEPTED, downloadStoredFile } from '../data/files'
+import { ACCEPTED, downloadStoredFile, invoiceFileLinks } from '../data/files'
 import { buildInvoicesZip } from '../lib/zipFaturas'
 import ImprimirFaturas from '../components/ImprimirFaturas'
 
@@ -49,6 +49,7 @@ export default function Faturas() {
   const [zipping, setZipping] = useState(null)
   const [exporting, setExporting] = useState(false)
   const [printing, setPrinting] = useState(null)
+  const [pdfMenu, setPdfMenu] = useState(false)
 
   const base = useMemo(() => invoiceRows.filter(r => (!month || monthOf(r.data) === month) && (!origem || (origem === 'rececao') === (r.source.origem === 'rececao')) && matchesInvoice(r, q)), [invoiceRows, month, origem, q])
   const counts = useMemo(() => Object.fromEntries(Object.entries(TABS).map(([k, t]) => [k, base.filter(t.test).length])), [base])
@@ -114,10 +115,19 @@ export default function Faturas() {
     }
   }
 
-  function pdf() {
-    const list = chosen.length ? chosen : rows
+  // PDF das despesas: "Completo" (por mês, com fornecedor, categoria, pagamento…) ou
+  // "Simplificado" (só Data, Fatura com link e Valor, mais o Total: bom para pagar a um fornecedor).
+  async function pdf(kind) {
+    setPdfMenu(false)
+    const list = [...(chosen.length ? chosen : rows)].sort((a, b) => String(a.data).localeCompare(String(b.data)))
     const sub = [month ? monthLabel(month) : 'Todos os meses', TABS[tab].label, origem === 'rececao' ? 'enviadas pela receção' : origem === 'admin' ? 'registadas pela administração' : '', chosen.length ? 'selecionadas' : ''].filter(Boolean).join(' · ')
-    if (!printExpenseReport([...list].sort((a, b) => String(a.data).localeCompare(String(b.data))), { title: 'Despesas', subtitle: sub })) toast('O navegador bloqueou a janela do PDF. Autoriza janelas pop-up para este site.', 'bad')
+    const blocked = () => toast('O navegador bloqueou a janela do PDF. Autoriza janelas pop-up para este site.', 'bad')
+    if (kind !== 'simples') return printExpenseReport(list, { title: 'Despesas', subtitle: sub }) || blocked()
+    // Se forem todas do mesmo fornecedor, o título é o nome dele (ex.: "Grão de Trigo").
+    const forn = [...new Set(list.filter(r => r.estado !== 'Rejeitada').map(r => (r.fornecedor || '').trim()))]
+    const title = forn.length === 1 && forn[0] ? forn[0] : 'Despesas'
+    const subtitle = month ? monthLabel(month) : ''
+    if (!(await printSimpleReport(list, { title, subtitle, getLinks: invoiceFileLinks }))) blocked()
   }
 
   // Ficheiros originais (PDF/fotos) das selecionadas, ou de todas as visíveis, para a contabilidade:
@@ -184,7 +194,7 @@ export default function Faturas() {
           <Select value={month} onChange={setMonth} options={months} placeholder="Todos os meses" aria-label="Mês" />
           <Select value={origem} onChange={setOrigem} options={[{ value: 'rececao', label: 'Enviadas pela receção' }, { value: 'admin', label: 'Registadas pela administração' }]} placeholder="Todas as origens" aria-label="Origem" />
           <Select value={order} onChange={v => setOrder(v || 'chegada')} options={[{ value: 'chegada', label: 'Últimas que chegaram primeiro' }, { value: 'recentes', label: 'Data: mais recentes primeiro' }, { value: 'antigas', label: 'Data: mais antigas primeiro' }]} aria-label="Ordenar" />
-          <button type="button" className="secondary" onClick={pdf} title="Relatório com as faturas visíveis (ou as selecionadas) e o total de cada mês">PDF das despesas</button>
+          <button type="button" className="secondary" onClick={() => setPdfMenu(true)} title="Relatório com as faturas visíveis (ou as selecionadas): completo ou simplificado">PDF das despesas</button>
           <button type="button" className="secondary" disabled={!!zipping} onClick={askExport} title="Descarrega os PDF e fotos das faturas visíveis (ou das selecionadas): separados num ZIP ou todos num só PDF. Bom para enviar à contabilidade.">{zipLabel || 'Descarregar ficheiros'}</button>
           <button type="button" className="secondary" onClick={() => exportInvoices(rows, `faturas-${tab}.csv`)}>Exportar CSV</button>
         </div>
@@ -211,7 +221,7 @@ export default function Faturas() {
             <button type="button" className="primary" disabled={busy} onClick={apply}>{busy ? 'A gravar…' : 'Aplicar'}</button>
             <button type="button" className="primary" disabled={!paymentsReady} onClick={startPay}>Liquidar selecionadas</button>
             <button type="button" className="primary" disabled={!!zipping} onClick={askExport} title="PDF e fotos originais das selecionadas: separados (ZIP) ou todos num só PDF">{zipLabel || '📎 Descarregar ficheiros'}</button>
-            <button type="button" className="secondary" onClick={pdf}>PDF das selecionadas</button>
+            <button type="button" className="secondary" onClick={() => setPdfMenu(true)}>PDF das selecionadas</button>
             <button type="button" className="secondary" onClick={() => setSelected(new Set())}>Limpar seleção</button>
           </div>
         )}
@@ -226,6 +236,16 @@ export default function Faturas() {
             <button type="button" className="secondary" onClick={() => { setExporting(false); setPrinting((chosen.length ? chosen : rows).filter(r => r.source.invoice_files?.length)) }}>🖨 Para imprimir (escolher páginas)</button>
           </div>
           <p className="muted small">No PDF único, as fotos passam a páginas A4, por ordem de data. No ZIP, cada fatura fica num ficheiro com data, fornecedor e valor no nome, mais uma lista em Excel (CSV).</p>
+        </Modal>
+      )}
+      {pdfMenu && (
+        <Modal title="PDF das despesas" onClose={() => setPdfMenu(false)}>
+          <p>{chosen.length ? `${chosen.length} fatura(s) selecionada(s).` : `${rows.length} fatura(s) visíveis.`} Que PDF queres?</p>
+          <div className="actions">
+            <button type="button" className="primary" onClick={() => pdf('completo')}>Completo</button>
+            <button type="button" className="secondary" onClick={() => pdf('simples')}>Simplificado</button>
+          </div>
+          <p className="muted small">Completo: por mês, com fornecedor, descrição, categoria e pagamento. Simplificado: só Data, Fatura (o número abre o ficheiro da fatura) e Valor, com o Total no fim. Dica: filtra por fornecedor e mês (ex.: Grão de Trigo, outubro) antes de carregar. Os links do PDF simplificado funcionam durante 30 dias.</p>
         </Modal>
       )}
       {printing && <ImprimirFaturas items={printing.map(r => ({ id: r.id, names: [r.fornecedor] }))} onClose={() => setPrinting(null)}
